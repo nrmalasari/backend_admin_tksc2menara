@@ -14,18 +14,14 @@ class RincianPembayaranResource extends Resource
 {
     protected static ?string $model = RincianPembayaran::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-currency-dollar';
-    protected static ?string $navigationGroup = 'Manajemen Data';
-    protected static ?string $navigationLabel = 'Rincian Pembayaran';
+    protected static ?string $navigationIcon = 'heroicon-o-book-open';
+    protected static ?string $navigationGroup = 'Manajemen Media';
+    protected static ?string $navigationLabel = 'Informasi Pembayaran';
     protected static ?string $pluralModelLabel = 'Data Rincian Pembayaran';
     protected static ?string $modelLabel = 'Rincian Pembayaran';
 
     protected static ?int $navigationSort = 3;
 
-    public static function getNavigationBadge(): ?string
-    {
-        return static::getModel()::count();
-    }
 
     public static function form(Form $form): Form
     {

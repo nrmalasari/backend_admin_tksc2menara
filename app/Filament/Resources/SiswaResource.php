@@ -16,12 +16,13 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 use Carbon\Carbon;
+use Illuminate\Support\HtmlString;
 
 class SiswaResource extends Resource
 {
     protected static ?string $model = Siswa::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-user-group';
+    protected static ?string $navigationIcon = 'heroicon-o-list-bullet';
     protected static ?string $navigationGroup = 'Manajemen Data';
     protected static ?string $navigationLabel = 'Siswa Terdaftar';
     protected static ?string $pluralModelLabel = 'Data Siswa Terdaftar';
@@ -426,15 +427,11 @@ class SiswaResource extends Resource
                                             })
                                             ->extraAttributes(['class' => 'text-sm']),
                                         
-                                        // Status Formulir - Menggunakan ViewField atau cara manual
-                                        Forms\Components\ViewField::make('status_formulir')
+                                        // Status Formulir dengan warna teks - PERBAIKAN DI SINI
+                                        Forms\Components\Placeholder::make('status_formulir')
                                             ->label('Status Formulir')
-                                            ->view('filament.components.status-badge')
-                                            ->viewData(function (callable $get) {
+                                            ->content(function (callable $get) {
                                                 $pendaftarId = $get('siswa_pendaftar_id');
-                                                $status = '-';
-                                                $color = 'secondary';
-                                                
                                                 if ($pendaftarId) {
                                                     $pendaftar = SiswaPendaftar::find($pendaftarId);
                                                     if ($pendaftar) {
@@ -447,43 +444,39 @@ class SiswaResource extends Resource
                                                         };
                                                         
                                                         $color = match($pendaftar->status) {
-                                                            'diverifikasi' => 'success',
-                                                            'diproses' => 'info',
-                                                            'menunggu' => 'warning',
-                                                            'ditolak' => 'danger',
-                                                            default => 'secondary',
+                                                            'diverifikasi' => 'text-green-600',
+                                                            'diproses' => 'text-blue-600',
+                                                            'menunggu' => 'text-yellow-600',
+                                                            'ditolak' => 'text-red-600',
+                                                            default => 'text-gray-600',
                                                         };
+                                                        
+                                                        // Gunakan HtmlString untuk render HTML
+                                                        return new HtmlString(
+                                                            '<span class="' . $color . ' font-medium">' . $status . '</span>'
+                                                        );
                                                     }
                                                 }
-                                                
-                                                return [
-                                                    'status' => $status,
-                                                    'color' => $color,
-                                                ];
+                                                return '-';
                                             })
                                             ->extraAttributes(['class' => 'text-sm']),
                                         
-                                        // Dokumen Formulir - Menggunakan ViewField atau cara manual
-                                        Forms\Components\ViewField::make('formulir_dokumen')
+                                        // Dokumen Formulir dengan warna teks - PERBAIKAN DI SINI
+                                        Forms\Components\Placeholder::make('formulir_dokumen')
                                             ->label('Dokumen Formulir')
-                                            ->view('filament.components.status-badge')
-                                            ->viewData(function (callable $get) {
+                                            ->content(function (callable $get) {
                                                 $pendaftarId = $get('siswa_pendaftar_id');
-                                                $status = 'Tidak tersedia';
-                                                $color = 'danger';
-                                                
                                                 if ($pendaftarId) {
                                                     $pendaftar = SiswaPendaftar::find($pendaftarId);
                                                     if ($pendaftar && $pendaftar->akte_kelahiran_path) {
-                                                        $status = 'Tersedia (Akte Kelahiran)';
-                                                        $color = 'success';
+                                                        return new HtmlString(
+                                                            '<span class="text-green-600 font-medium">Tersedia (Akte Kelahiran)</span>'
+                                                        );
                                                     }
                                                 }
-                                                
-                                                return [
-                                                    'status' => $status,
-                                                    'color' => $color,
-                                                ];
+                                                return new HtmlString(
+                                                    '<span class="text-red-600 font-medium">Tidak tersedia</span>'
+                                                );
                                             })
                                             ->extraAttributes(['class' => 'text-sm']),
                                     ])

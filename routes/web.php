@@ -4,7 +4,8 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\API\RegistPendaftarController;
 use App\Http\Controllers\API\PembayaranController;
 use App\Http\Controllers\API\SiswaPendaftarController;
-use App\Http\Controllers\API\RincianPembayaranController; // TAMBAHKAN INI
+use App\Http\Controllers\API\RincianPembayaranController;
+use App\Http\Controllers\API\SiswaController;
 use Illuminate\Http\Request;
 
 // ==================== API ROUTES ====================
@@ -36,9 +37,16 @@ Route::prefix('api')->group(function () {
                 'GET /api/pembayaran/debug/all' => 'Debug all payments',
                 'GET /api/pembayaran/check-files/{id}' => 'Check payment files',
                 'PUT /api/pembayaran/{id}/status' => 'Update payment status',
-                'GET /api/rincian-pembayaran' => 'Get rincian pembayaran', // TAMBAHKAN INI
-                'GET /api/rincian-pembayaran/summary' => 'Get summary rincian', // TAMBAHKAN INI
-                'GET /api/rincian-pembayaran/{id}' => 'Get detail rincian' // TAMBAHKAN INI
+                'GET /api/rincian-pembayaran' => 'Get rincian pembayaran',
+                'GET /api/rincian-pembayaran/summary' => 'Get summary rincian',
+                'GET /api/rincian-pembayaran/{id}' => 'Get detail rincian',
+                'GET /api/siswa' => 'Get semua siswa (publik)',
+                'GET /api/siswa/aktif' => 'Get siswa aktif saja',
+                'GET /api/siswa/tahun-ajaran/{id}' => 'Get siswa by tahun ajaran',
+                'GET /api/siswa/{id}' => 'Get detail siswa',
+                'GET /api/siswa/test/all' => 'Test get all siswa',
+                'GET /api/siswa-pendaftar/test' => 'Test get all siswa pendaftar',
+                'POST /api/siswa-pendaftar/test' => 'Test create siswa pendaftar'
             ]
         ]);
     });
@@ -124,7 +132,7 @@ Route::prefix('api')->group(function () {
         Route::get('/check-files/{id}', [PembayaranController::class, 'checkFiles']);
     });
     
-    // 6. Rincian Pembayaran Routes - TAMBAHKAN INI
+    // 6. Rincian Pembayaran Routes
     Route::prefix('rincian-pembayaran')->group(function () {
         Route::get('/', [RincianPembayaranController::class, 'index']);
         Route::get('/summary', [RincianPembayaranController::class, 'summary']);
@@ -136,7 +144,39 @@ Route::prefix('api')->group(function () {
         // Route::delete('/{id}', [RincianPembayaranController::class, 'destroy']);
     });
     
-    // 7. Test POST endpoint
+    // 7. Siswa Routes (publik - tanpa auth)
+    Route::prefix('siswa')->group(function () {
+        Route::get('/', [SiswaController::class, 'index']);
+        Route::get('/aktif', [SiswaController::class, 'getAktif']);
+        Route::get('/tahun-ajaran/{id}', [SiswaController::class, 'getByTahunAjaran']);
+        Route::get('/{id}', [SiswaController::class, 'show']);
+        
+        // Test route untuk debugging
+        Route::get('/test/all', function () {
+            $siswas = App\Models\Siswa::with(['tahunAjaran', 'kelas'])
+                ->where('status', 'aktif')
+                ->orderBy('nama_lengkap')
+                ->take(5)
+                ->get();
+            
+            return response()->json([
+                'success' => true,
+                'count' => $siswas->count(),
+                'data' => $siswas->map(function ($siswa) {
+                    return [
+                        'id' => $siswa->id,
+                        'nama' => $siswa->nama_lengkap,
+                        'nis' => $siswa->nis,
+                        'foto_url' => $siswa->foto_url,
+                        'tahun_ajaran' => $siswa->tahunAjaran?->nama_tahun_ajaran,
+                        'kelas' => $siswa->kelas?->nama_kelas,
+                    ];
+                })
+            ]);
+        });
+    });
+    
+    // 8. Test POST endpoint
     Route::post('/test-post', function (Request $request) {
         return response()->json([
             'success' => true,
@@ -177,12 +217,17 @@ Route::fallback(function () {
             'POST /api/pembayaran/test/create' => 'Test create payment',
             'GET /api/pembayaran/debug/all' => 'Debug all payments',
             'GET /api/pembayaran/check-files/{id}' => 'Check payment files',
-            'GET /api/rincian-pembayaran' => 'Get rincian pembayaran', // TAMBAHKAN INI
-            'GET /api/rincian-pembayaran/summary' => 'Get summary rincian', // TAMBAHKAN INI
-            'GET /api/rincian-pembayaran/{id}' => 'Get detail rincian', // TAMBAHKAN INI
+            'GET /api/rincian-pembayaran' => 'Get rincian pembayaran',
+            'GET /api/rincian-pembayaran/summary' => 'Get summary rincian',
+            'GET /api/rincian-pembayaran/{id}' => 'Get detail rincian',
+            'GET /api/siswa' => 'Get semua siswa (publik)',
+            'GET /api/siswa/aktif' => 'Get siswa aktif saja',
+            'GET /api/siswa/tahun-ajaran/{id}' => 'Get siswa by tahun ajaran',
+            'GET /api/siswa/{id}' => 'Get detail siswa',
             'POST /api/test-post' => 'Test POST request',
             'GET /api/siswa-pendaftar/test' => 'Test get all siswa',
-            'POST /api/siswa-pendaftar/test' => 'Test create siswa'
+            'POST /api/siswa-pendaftar/test' => 'Test create siswa',
+            'GET /api/siswa/test/all' => 'Test get all siswa (debug)'
         ]
     ], 404);
 });

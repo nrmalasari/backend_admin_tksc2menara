@@ -9,4 +9,8 @@ use Filament\Resources\Pages\CreateRecord;
 class CreateSiswa extends CreateRecord
 {
     protected static string $resource = SiswaResource::class;
+    public function getTitle(): string
+    {
+        return 'Tambah Siswa';
+    }
 }
