@@ -15,7 +15,7 @@ class ListKelas extends ListRecords
         return [
             Actions\CreateAction::make()
                 ->label('Tambah Kelas')
-                ->icon('heroicon-o-plus'),
+                ->icon('heroicon-o-plus-circle'),
         ];
     }
 }

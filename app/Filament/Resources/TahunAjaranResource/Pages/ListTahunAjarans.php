@@ -15,7 +15,7 @@ class ListTahunAjarans extends ListRecords
         return [
             Actions\CreateAction::make()
                 ->label('Tambah Tahun Ajaran')
-                ->icon('heroicon-o-plus'),
+                ->icon('heroicon-o-plus-circle'),
         ];
     }
 }

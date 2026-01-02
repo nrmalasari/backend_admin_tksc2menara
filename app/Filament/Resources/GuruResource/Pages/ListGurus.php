@@ -13,7 +13,9 @@ class ListGurus extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
-            Actions\CreateAction::make(),
+            Actions\CreateAction::make()
+                ->label('Tambah Guru')
+                ->icon('heroicon-o-plus-circle'), // Optional: tambahkan icon
         ];
     }
 }

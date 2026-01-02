@@ -15,7 +15,7 @@ class ListRegistPendaftars extends ListRecords
         return [
             Actions\CreateAction::make()
                 ->label('Tambah Akun Pendaftar')
-                ->icon('heroicon-o-plus-circle'), // Optional: tambahkan icon
+                ->icon('heroicon-o-plus-circle'),
         ];
     }
 }

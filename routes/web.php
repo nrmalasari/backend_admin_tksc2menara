@@ -6,6 +6,7 @@ use App\Http\Controllers\API\PembayaranController;
 use App\Http\Controllers\API\SiswaPendaftarController;
 use App\Http\Controllers\API\RincianPembayaranController;
 use App\Http\Controllers\API\SiswaController;
+use App\Http\Controllers\API\GuruController;
 use Illuminate\Http\Request;
 
 // ==================== API ROUTES ====================
@@ -45,6 +46,10 @@ Route::prefix('api')->group(function () {
                 'GET /api/siswa/tahun-ajaran/{id}' => 'Get siswa by tahun ajaran',
                 'GET /api/siswa/{id}' => 'Get detail siswa',
                 'GET /api/siswa/test/all' => 'Test get all siswa',
+                'GET /api/guru' => 'Get semua guru (publik)',
+                'GET /api/guru/aktif' => 'Get guru aktif saja',
+                'GET /api/guru/{id}' => 'Get detail guru',
+                'GET /api/guru/test/all' => 'Test get all guru',
                 'GET /api/siswa-pendaftar/test' => 'Test get all siswa pendaftar',
                 'POST /api/siswa-pendaftar/test' => 'Test create siswa pendaftar'
             ]
@@ -176,7 +181,40 @@ Route::prefix('api')->group(function () {
         });
     });
     
-    // 8. Test POST endpoint
+    // 8. Guru Routes (publik - tanpa auth)
+    Route::prefix('guru')->group(function () {
+        Route::get('/', [GuruController::class, 'index']);
+        Route::get('/aktif', [GuruController::class, 'getAktif']);
+        Route::get('/{id}', [GuruController::class, 'show']);
+        
+        // Test route untuk debugging
+        Route::get('/test/all', function () {
+            $gurus = App\Models\Guru::where('status', 'aktif')
+                ->orderByRaw("CASE WHEN jabatan LIKE '%kepala%' THEN 1 ELSE 2 END")
+                ->orderBy('nama_lengkap')
+                ->take(5)
+                ->get();
+            
+            return response()->json([
+                'success' => true,
+                'count' => $gurus->count(),
+                'data' => $gurus->map(function ($guru) {
+                    return [
+                        'id' => $guru->id_guru,
+                        'nama_lengkap' => $guru->nama_lengkap,
+                        'jabatan' => $guru->jabatan,
+                        'foto_url' => $guru->foto_url,
+                        'guru_kelas' => $guru->guru_kelas,
+                        'pendidikan_terakhir' => $guru->pendidikan_terakhir,
+                        'bidang_studi' => $guru->bidang_studi,
+                        'status' => $guru->status,
+                    ];
+                })
+            ]);
+        });
+    });
+    
+    // 9. Test POST endpoint
     Route::post('/test-post', function (Request $request) {
         return response()->json([
             'success' => true,
@@ -224,6 +262,10 @@ Route::fallback(function () {
             'GET /api/siswa/aktif' => 'Get siswa aktif saja',
             'GET /api/siswa/tahun-ajaran/{id}' => 'Get siswa by tahun ajaran',
             'GET /api/siswa/{id}' => 'Get detail siswa',
+            'GET /api/guru' => 'Get semua guru (publik)',
+            'GET /api/guru/aktif' => 'Get guru aktif saja',
+            'GET /api/guru/{id}' => 'Get detail guru',
+            'GET /api/guru/test/all' => 'Test get all guru',
             'POST /api/test-post' => 'Test POST request',
             'GET /api/siswa-pendaftar/test' => 'Test get all siswa',
             'POST /api/siswa-pendaftar/test' => 'Test create siswa',

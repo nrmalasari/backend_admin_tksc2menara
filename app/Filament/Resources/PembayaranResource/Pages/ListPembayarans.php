@@ -29,7 +29,8 @@ class ListPembayarans extends ListRecords
     {
         return [
             Actions\CreateAction::make()
-                ->label('Tambah Pembayaran'), // TAMBAHKAN INI
+                ->label('Tambah Pembayaran')
+                ->icon('heroicon-o-plus-circle'),
         ];
     }
 }

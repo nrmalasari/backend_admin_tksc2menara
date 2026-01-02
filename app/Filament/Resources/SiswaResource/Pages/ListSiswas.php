@@ -13,7 +13,9 @@ class ListSiswas extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
-            Actions\CreateAction::make(),
+            Actions\CreateAction::make()
+                ->label('Tambah Siswa')
+                ->icon('heroicon-o-plus-circle'), // Optional: tambahkan icon
         ];
     }
 }
