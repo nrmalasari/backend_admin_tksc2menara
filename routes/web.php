@@ -7,6 +7,10 @@ use App\Http\Controllers\API\SiswaPendaftarController;
 use App\Http\Controllers\API\RincianPembayaranController;
 use App\Http\Controllers\API\SiswaController;
 use App\Http\Controllers\API\GuruController;
+use App\Http\Controllers\API\BeritaAcaraController;
+use App\Http\Controllers\API\FasilitasController;
+use App\Http\Controllers\API\StrukturOrganisasiController;
+use App\Http\Controllers\API\SambutanKepalaSekolahController;
 use Illuminate\Http\Request;
 
 // ==================== API ROUTES ====================
@@ -51,7 +55,39 @@ Route::prefix('api')->group(function () {
                 'GET /api/guru/{id}' => 'Get detail guru',
                 'GET /api/guru/test/all' => 'Test get all guru',
                 'GET /api/siswa-pendaftar/test' => 'Test get all siswa pendaftar',
-                'POST /api/siswa-pendaftar/test' => 'Test create siswa pendaftar'
+                'POST /api/siswa-pendaftar/test' => 'Test create siswa pendaftar',
+                'GET /api/berita-acara' => 'Get semua berita acara',
+                'GET /api/berita-acara/latest' => 'Get berita terbaru',
+                'GET /api/berita-acara/tags' => 'Get semua tag/kategori',
+                'GET /api/berita-acara/slug/{slug}' => 'Get berita by slug',
+                'GET /api/berita-acara/find/{identifier}' => 'Find berita by slug or ID',
+                'GET /api/berita-acara/{id}' => 'Get berita by ID',
+                'GET /api/berita-acara/test/all' => 'Test get all berita',
+                'GET /api/fasilitas' => 'Get semua fasilitas (publik)',
+                'GET /api/fasilitas/latest' => 'Get fasilitas terbaru',
+                'GET /api/fasilitas/summary' => 'Get summary fasilitas',
+                'GET /api/fasilitas/{id}' => 'Get detail fasilitas',
+                'GET /api/fasilitas/test/all' => 'Test get all fasilitas',
+                'GET /api/fasilitas/debug/all' => 'Debug all fasilitas',
+                'GET /api/struktur-organisasi' => 'Get semua struktur organisasi',
+                'GET /api/struktur-organisasi/latest' => 'Get struktur organisasi terbaru',
+                'GET /api/struktur-organisasi/active' => 'Get struktur organisasi aktif',
+                'GET /api/struktur-organisasi/summary' => 'Get summary struktur organisasi',
+                'GET /api/struktur-organisasi/{id}' => 'Get detail struktur organisasi',
+                'GET /api/struktur-organisasi/test/all' => 'Test get all struktur organisasi',
+                'GET /api/struktur-organisasi/debug/all' => 'Debug all struktur organisasi',
+                'GET /api/sambutan' => 'Get semua sambutan kepala sekolah',
+                'GET /api/sambutan/latest' => 'Get sambutan terbaru',
+                'GET /api/sambutan/active' => 'Get sambutan aktif',
+                'GET /api/sambutan/summary' => 'Get summary sambutan',
+                'GET /api/sambutan/{id}' => 'Get detail sambutan',
+                'POST /api/sambutan' => 'Create sambutan baru',
+                'PUT /api/sambutan/{id}' => 'Update sambutan',
+                'DELETE /api/sambutan/{id}' => 'Delete sambutan',
+                'POST /api/sambutan/{id}/restore' => 'Restore sambutan',
+                'DELETE /api/sambutan/{id}/force' => 'Force delete sambutan',
+                'GET /api/sambutan/test/all' => 'Test get all sambutan',
+                'GET /api/sambutan/debug/all' => 'Debug all sambutan'
             ]
         ]);
     });
@@ -142,11 +178,6 @@ Route::prefix('api')->group(function () {
         Route::get('/', [RincianPembayaranController::class, 'index']);
         Route::get('/summary', [RincianPembayaranController::class, 'summary']);
         Route::get('/{id}', [RincianPembayaranController::class, 'show']);
-        
-        // Anda bisa tambahkan route lain jika diperlukan:
-        // Route::post('/', [RincianPembayaranController::class, 'store']);
-        // Route::put('/{id}', [RincianPembayaranController::class, 'update']);
-        // Route::delete('/{id}', [RincianPembayaranController::class, 'destroy']);
     });
     
     // 7. Siswa Routes (publik - tanpa auth)
@@ -214,7 +245,68 @@ Route::prefix('api')->group(function () {
         });
     });
     
-    // 9. Test POST endpoint
+    // 9. Berita Acara Routes (publik - tanpa auth)
+    Route::prefix('berita-acara')->group(function () {
+        Route::get('/', [BeritaAcaraController::class, 'index']);
+        Route::get('/latest', [BeritaAcaraController::class, 'getLatest']);
+        Route::get('/tags', [BeritaAcaraController::class, 'getTags']);
+        Route::get('/slug/{slug}', [BeritaAcaraController::class, 'showBySlug']);
+        Route::get('/find/{identifier}', [BeritaAcaraController::class, 'findBerita']);
+        Route::get('/{id}', [BeritaAcaraController::class, 'show']);
+        Route::get('/debug/all', [BeritaAcaraController::class, 'debugAll']);
+        Route::get('/test/all', [BeritaAcaraController::class, 'testAll']);
+    });
+    
+    // 10. Fasilitas Routes (publik - tanpa auth)
+    Route::prefix('fasilitas')->group(function () {
+        Route::get('/', [FasilitasController::class, 'index']);
+        Route::get('/latest', [FasilitasController::class, 'getLatest']);
+        Route::get('/summary', [FasilitasController::class, 'summary']);
+        Route::get('/{id}', [FasilitasController::class, 'show']);
+        Route::get('/slug/{slug}', [FasilitasController::class, 'showBySlug']);
+        
+        // Test dan debug routes
+        Route::get('/test/all', [FasilitasController::class, 'testAll']);
+        Route::get('/debug/all', [FasilitasController::class, 'debugAll']);
+    });
+    
+    // 11. Struktur Organisasi Routes (publik - tanpa auth)
+    Route::prefix('struktur-organisasi')->group(function () {
+        Route::get('/', [StrukturOrganisasiController::class, 'index']);
+        Route::get('/latest', [StrukturOrganisasiController::class, 'getLatest']);
+        Route::get('/active', [StrukturOrganisasiController::class, 'getActive']);
+        Route::get('/summary', [StrukturOrganisasiController::class, 'summary']);
+        Route::get('/{id}', [StrukturOrganisasiController::class, 'show']);
+        
+        // Test dan debug routes
+        Route::get('/test/all', [StrukturOrganisasiController::class, 'testAll']);
+        Route::get('/debug/all', [StrukturOrganisasiController::class, 'debugAll']);
+    });
+    
+    // 12. Sambutan Kepala Sekolah Routes
+    Route::prefix('sambutan')->group(function () {
+        // GET routes
+        Route::get('/', [SambutanKepalaSekolahController::class, 'index'])->name('sambutan.index');
+        Route::get('/latest', [SambutanKepalaSekolahController::class, 'getLatest'])->name('sambutan.latest');
+        Route::get('/active', [SambutanKepalaSekolahController::class, 'getActive'])->name('sambutan.active');
+        Route::get('/summary', [SambutanKepalaSekolahController::class, 'summary'])->name('sambutan.summary');
+        Route::get('/{id}', [SambutanKepalaSekolahController::class, 'show'])->name('sambutan.show');
+        
+        // CRUD routes
+        Route::post('/', [SambutanKepalaSekolahController::class, 'store'])->name('sambutan.store');
+        Route::put('/{id}', [SambutanKepalaSekolahController::class, 'update'])->name('sambutan.update');
+        Route::delete('/{id}', [SambutanKepalaSekolahController::class, 'destroy'])->name('sambutan.destroy');
+        
+        // Restore routes
+        Route::post('/{id}/restore', [SambutanKepalaSekolahController::class, 'restore'])->name('sambutan.restore');
+        Route::delete('/{id}/force', [SambutanKepalaSekolahController::class, 'forceDelete'])->name('sambutan.forceDelete');
+        
+        // Debug routes
+        Route::get('/test/all', [SambutanKepalaSekolahController::class, 'testAll'])->name('sambutan.test.all');
+        Route::get('/debug/all', [SambutanKepalaSekolahController::class, 'debugAll'])->name('sambutan.debug.all');
+    });
+    
+    // 13. Test POST endpoint
     Route::post('/test-post', function (Request $request) {
         return response()->json([
             'success' => true,
@@ -262,14 +354,46 @@ Route::fallback(function () {
             'GET /api/siswa/aktif' => 'Get siswa aktif saja',
             'GET /api/siswa/tahun-ajaran/{id}' => 'Get siswa by tahun ajaran',
             'GET /api/siswa/{id}' => 'Get detail siswa',
+            'GET /api/siswa/test/all' => 'Test get all siswa (debug)',
             'GET /api/guru' => 'Get semua guru (publik)',
             'GET /api/guru/aktif' => 'Get guru aktif saja',
             'GET /api/guru/{id}' => 'Get detail guru',
             'GET /api/guru/test/all' => 'Test get all guru',
+            'GET /api/berita-acara' => 'Get semua berita acara',
+            'GET /api/berita-acara/latest' => 'Get berita terbaru',
+            'GET /api/berita-acara/tags' => 'Get semua tag/kategori',
+            'GET /api/berita-acara/slug/{slug}' => 'Get berita by slug',
+            'GET /api/berita-acara/find/{identifier}' => 'Find berita by slug or ID',
+            'GET /api/berita-acara/{id}' => 'Get berita by ID',
+            'GET /api/berita-acara/test/all' => 'Test get all berita',
+            'GET /api/fasilitas' => 'Get semua fasilitas (publik)',
+            'GET /api/fasilitas/latest' => 'Get fasilitas terbaru',
+            'GET /api/fasilitas/summary' => 'Get summary fasilitas',
+            'GET /api/fasilitas/{id}' => 'Get detail fasilitas',
+            'GET /api/fasilitas/test/all' => 'Test get all fasilitas',
+            'GET /api/fasilitas/debug/all' => 'Debug all fasilitas',
+            'GET /api/struktur-organisasi' => 'Get semua struktur organisasi',
+            'GET /api/struktur-organisasi/latest' => 'Get struktur organisasi terbaru',
+            'GET /api/struktur-organisasi/active' => 'Get struktur organisasi aktif',
+            'GET /api/struktur-organisasi/summary' => 'Get summary struktur organisasi',
+            'GET /api/struktur-organisasi/{id}' => 'Get detail struktur organisasi',
+            'GET /api/struktur-organisasi/test/all' => 'Test get all struktur organisasi',
+            'GET /api/struktur-organisasi/debug/all' => 'Debug all struktur organisasi',
+            'GET /api/sambutan' => 'Get semua sambutan kepala sekolah',
+            'GET /api/sambutan/latest' => 'Get sambutan terbaru',
+            'GET /api/sambutan/active' => 'Get sambutan aktif',
+            'GET /api/sambutan/summary' => 'Get summary sambutan',
+            'GET /api/sambutan/{id}' => 'Get detail sambutan',
+            'POST /api/sambutan' => 'Create sambutan baru',
+            'PUT /api/sambutan/{id}' => 'Update sambutan',
+            'DELETE /api/sambutan/{id}' => 'Delete sambutan',
+            'POST /api/sambutan/{id}/restore' => 'Restore sambutan',
+            'DELETE /api/sambutan/{id}/force' => 'Force delete sambutan',
+            'GET /api/sambutan/test/all' => 'Test get all sambutan',
+            'GET /api/sambutan/debug/all' => 'Debug all sambutan',
             'POST /api/test-post' => 'Test POST request',
             'GET /api/siswa-pendaftar/test' => 'Test get all siswa',
-            'POST /api/siswa-pendaftar/test' => 'Test create siswa',
-            'GET /api/siswa/test/all' => 'Test get all siswa (debug)'
+            'POST /api/siswa-pendaftar/test' => 'Test create siswa'
         ]
     ], 404);
 });
