@@ -212,4 +212,78 @@ class SiswaController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Get siswa statistics
+     */
+    public function getStats(Request $request)
+    {
+        try {
+            Log::info('=== GET SISWA STATS API CALLED ===');
+            
+            $stats = [
+                'total_siswa' => Siswa::count(),
+                'total_siswa_aktif' => Siswa::where('status', 'aktif')->count(),
+                'total_siswa_lulus' => Siswa::where('status', 'lulus')->count(),
+                'total_siswa_pindah' => Siswa::where('status', 'pindah')->count(),
+                'kelas_distribution' => $this->getKelasDistribution(),
+                'tahun_ajaran_distribution' => $this->getTahunAjaranDistribution(),
+            ];
+            
+            return response()->json([
+                'success' => true,
+                'data' => $stats,
+                'message' => 'Data statistik siswa berhasil diambil'
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error mengambil statistik siswa: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengambil statistik siswa: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get kelas distribution
+     */
+    private function getKelasDistribution()
+    {
+        $distributions = Siswa::with('kelas')
+            ->select('kelas_id')
+            ->selectRaw('COUNT(*) as count')
+            ->groupBy('kelas_id')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'kelas_id' => $item->kelas_id,
+                    'kelas_nama' => $item->kelas ? $item->kelas->nama_kelas : 'Tidak Ada',
+                    'count' => $item->count
+                ];
+            });
+        
+        return $distributions;
+    }
+
+    /**
+     * Get tahun ajaran distribution
+     */
+    private function getTahunAjaranDistribution()
+    {
+        $distributions = Siswa::with('tahunAjaran')
+            ->select('tahun_ajaran_id')
+            ->selectRaw('COUNT(*) as count')
+            ->groupBy('tahun_ajaran_id')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'tahun_ajaran_id' => $item->tahun_ajaran_id,
+                    'tahun_ajaran_nama' => $item->tahunAjaran ? $item->tahunAjaran->nama_tahun_ajaran : 'Tidak Ada',
+                    'count' => $item->count
+                ];
+            });
+        
+        return $distributions;
+    }
 }

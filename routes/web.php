@@ -11,6 +11,7 @@ use App\Http\Controllers\API\BeritaAcaraController;
 use App\Http\Controllers\API\FasilitasController;
 use App\Http\Controllers\API\StrukturOrganisasiController;
 use App\Http\Controllers\API\SambutanKepalaSekolahController;
+use App\Http\Controllers\API\StatsController;
 use Illuminate\Http\Request;
 
 // ==================== API ROUTES ====================
@@ -87,7 +88,12 @@ Route::prefix('api')->group(function () {
                 'POST /api/sambutan/{id}/restore' => 'Restore sambutan',
                 'DELETE /api/sambutan/{id}/force' => 'Force delete sambutan',
                 'GET /api/sambutan/test/all' => 'Test get all sambutan',
-                'GET /api/sambutan/debug/all' => 'Debug all sambutan'
+                'GET /api/sambutan/debug/all' => 'Debug all sambutan',
+                'GET /api/stats' => 'Get all stats',
+                'GET /api/stats/home' => 'Get home stats',
+                'GET /api/stats/category/{category}' => 'Get stats by category',
+                'GET /api/guru/stats' => 'Get guru stats',
+                'GET /api/siswa/stats' => 'Get siswa stats'
             ]
         ]);
     });
@@ -187,6 +193,9 @@ Route::prefix('api')->group(function () {
         Route::get('/tahun-ajaran/{id}', [SiswaController::class, 'getByTahunAjaran']);
         Route::get('/{id}', [SiswaController::class, 'show']);
         
+        // Stats route untuk siswa
+        Route::get('/stats', [SiswaController::class, 'getStats']);
+        
         // Test route untuk debugging
         Route::get('/test/all', function () {
             $siswas = App\Models\Siswa::with(['tahunAjaran', 'kelas'])
@@ -217,6 +226,9 @@ Route::prefix('api')->group(function () {
         Route::get('/', [GuruController::class, 'index']);
         Route::get('/aktif', [GuruController::class, 'getAktif']);
         Route::get('/{id}', [GuruController::class, 'show']);
+        
+        // Stats route untuk guru
+        Route::get('/stats', [GuruController::class, 'getStats']);
         
         // Test route untuk debugging
         Route::get('/test/all', function () {
@@ -306,7 +318,14 @@ Route::prefix('api')->group(function () {
         Route::get('/debug/all', [SambutanKepalaSekolahController::class, 'debugAll'])->name('sambutan.debug.all');
     });
     
-    // 13. Test POST endpoint
+    // 13. Stats API Routes
+    Route::prefix('stats')->group(function () {
+        Route::get('/', [StatsController::class, 'index'])->name('stats.index');
+        Route::get('/home', [StatsController::class, 'getHomeStats'])->name('stats.home');
+        Route::get('/category/{category}', [StatsController::class, 'getStatsByCategory'])->name('stats.category');
+    });
+    
+    // 14. Test POST endpoint
     Route::post('/test-post', function (Request $request) {
         return response()->json([
             'success' => true,
@@ -354,10 +373,12 @@ Route::fallback(function () {
             'GET /api/siswa/aktif' => 'Get siswa aktif saja',
             'GET /api/siswa/tahun-ajaran/{id}' => 'Get siswa by tahun ajaran',
             'GET /api/siswa/{id}' => 'Get detail siswa',
+            'GET /api/siswa/stats' => 'Get siswa stats',
             'GET /api/siswa/test/all' => 'Test get all siswa (debug)',
             'GET /api/guru' => 'Get semua guru (publik)',
             'GET /api/guru/aktif' => 'Get guru aktif saja',
             'GET /api/guru/{id}' => 'Get detail guru',
+            'GET /api/guru/stats' => 'Get guru stats',
             'GET /api/guru/test/all' => 'Test get all guru',
             'GET /api/berita-acara' => 'Get semua berita acara',
             'GET /api/berita-acara/latest' => 'Get berita terbaru',
@@ -391,6 +412,9 @@ Route::fallback(function () {
             'DELETE /api/sambutan/{id}/force' => 'Force delete sambutan',
             'GET /api/sambutan/test/all' => 'Test get all sambutan',
             'GET /api/sambutan/debug/all' => 'Debug all sambutan',
+            'GET /api/stats' => 'Get all stats',
+            'GET /api/stats/home' => 'Get home stats',
+            'GET /api/stats/category/{category}' => 'Get stats by category',
             'POST /api/test-post' => 'Test POST request',
             'GET /api/siswa-pendaftar/test' => 'Test get all siswa',
             'POST /api/siswa-pendaftar/test' => 'Test create siswa'

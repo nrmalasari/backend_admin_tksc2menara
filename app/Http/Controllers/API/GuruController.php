@@ -172,4 +172,60 @@ class GuruController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Get guru statistics
+     */
+    public function getStats(Request $request)
+    {
+        try {
+            Log::info('=== GET GURU STATS API CALLED ===');
+            
+            $stats = [
+                'total_guru' => Guru::where('jabatan', 'Guru')->count(),
+                'total_guru_aktif' => Guru::where('jabatan', 'Guru')
+                    ->where('status', 'aktif')
+                    ->count(),
+                'total_guru_nonaktif' => Guru::where('jabatan', 'Guru')
+                    ->where('status', 'nonaktif')
+                    ->count(),
+                'total_guru_pensiun' => Guru::where('jabatan', 'Guru')
+                    ->where('status', 'pensiun')
+                    ->count(),
+                'jabatan_distribution' => $this->getJabatanDistribution(),
+            ];
+            
+            return response()->json([
+                'success' => true,
+                'data' => $stats,
+                'message' => 'Data statistik guru berhasil diambil'
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Error mengambil statistik guru: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal mengambil statistik guru: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get jabatan distribution
+     */
+    private function getJabatanDistribution()
+    {
+        $distributions = Guru::select('jabatan')
+            ->selectRaw('COUNT(*) as count')
+            ->groupBy('jabatan')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'jabatan' => $item->jabatan,
+                    'count' => $item->count
+                ];
+            });
+        
+        return $distributions;
+    }
 }

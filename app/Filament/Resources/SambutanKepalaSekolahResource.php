@@ -17,7 +17,7 @@ class SambutanKepalaSekolahResource extends Resource
     protected static ?string $model = SambutanKepalaSekolah::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-chat-bubble-left-right';
-    protected static ?string $navigationGroup = 'Konten Website';
+    protected static ?string $navigationGroup = 'Manajemen Website';
     protected static ?string $navigationLabel = 'Sambutan Kepala Sekolah';
     protected static ?string $pluralModelLabel = 'Sambutan Kepala Sekolah';
     protected static ?string $modelLabel = 'Sambutan';
