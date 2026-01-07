@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\SiswaPendaftarResource\Pages;
 use App\Models\SiswaPendaftar;
+use App\Models\TahunAjaran;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -65,6 +66,14 @@ class SiswaPendaftarResource extends Resource
                             ->preload()
                             ->required(),
                         
+                        // Tambahkan field tahun_ajaran_id di form
+                        Forms\Components\Select::make('tahun_ajaran_id')
+                            ->label('Tahun Ajaran')
+                            ->relationship('tahunAjaran', 'nama_tahun_ajaran')
+                            ->searchable()
+                            ->preload()
+                            ->required(),
+                        
                         Forms\Components\Select::make('status')
                             ->label('Status Pendaftaran')
                             ->options([
@@ -75,7 +84,7 @@ class SiswaPendaftarResource extends Resource
                             ])
                             ->default('menunggu')
                             ->required(),
-                    ])->columns(2),
+                    ])->columns(3), // Ubah menjadi 3 kolom untuk menampung field baru
                 
                 Forms\Components\Section::make('A. Data Anak')
                     ->schema([
@@ -426,6 +435,12 @@ class SiswaPendaftarResource extends Resource
                     ->copyMessage('NIK disalin ke clipboard')
                     ->copyMessageDuration(1500),
                 
+                // Tambahkan kolom tahun ajaran
+                Tables\Columns\TextColumn::make('tahunAjaran.nama_tahun_ajaran')
+                    ->label('Tahun Ajaran')
+                    ->searchable()
+                    ->sortable(),
+                
                 Tables\Columns\TextColumn::make('tempat_lahir')
                     ->label('Tempat Lahir')
                     ->searchable()
@@ -518,7 +533,8 @@ class SiswaPendaftarResource extends Resource
                     ->extraImgAttributes(['class' => 'object-cover rounded'])
                     ->url(fn ($record) => $record->kartu_keluarga_url)
                     ->openUrlInNewTab(),
-                                    Tables\Columns\ImageColumn::make('kia_url')
+                
+                Tables\Columns\ImageColumn::make('kia_url')
                     ->label('KIA')
                     ->getStateUsing(fn ($record) => $record->kia_url)
                     ->height(40)
@@ -547,6 +563,13 @@ class SiswaPendaftarResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
+                // Tambahkan filter berdasarkan tahun ajaran
+                Tables\Filters\SelectFilter::make('tahun_ajaran_id')
+                    ->label('Tahun Ajaran')
+                    ->relationship('tahunAjaran', 'nama_tahun_ajaran')
+                    ->searchable()
+                    ->preload(),
+                
                 Tables\Filters\SelectFilter::make('status')
                     ->label('Status')
                     ->options([

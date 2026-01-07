@@ -74,13 +74,18 @@ class SiswaResource extends Resource
                             ->helperText('Pilih dari siswa pendaftar yang sudah diverifikasi')
                             ->nullable()
                             ->live()
-                            ->afterStateUpdated(function ($state, callable $set) {
+                            ->afterStateUpdated(function ($state, callable $set, callable $get) {
                                 if ($state) {
                                     $pendaftar = SiswaPendaftar::find($state);
                                     if ($pendaftar) {
                                         // Auto-fill data dari pendaftar
                                         $set('nama_lengkap', $pendaftar->nama_lengkap);
                                         $set('asal_sekolah', $pendaftar->asal_sekolah ?? null);
+                                        
+                                        // Set tahun ajaran otomatis dari data pendaftar
+                                        if ($pendaftar->tahun_ajaran_id) {
+                                            $set('tahun_ajaran_id', $pendaftar->tahun_ajaran_id);
+                                        }
                                         
                                         // Set formulir otomatis dari akte kelahiran
                                         if ($pendaftar->akte_kelahiran_path) {
@@ -95,7 +100,9 @@ class SiswaResource extends Resource
                             ->relationship('tahunAjaran', 'nama_tahun_ajaran')
                             ->searchable()
                             ->preload()
-                            ->required(),
+                            ->required()
+                            ->helperText('Otomatis terisi jika memilih dari data pendaftar')
+                            ->disabled(fn (callable $get) => !empty($get('siswa_pendaftar_id'))),
                         
                         Forms\Components\Select::make('kelas_id')
                             ->label('Kelas')
@@ -155,7 +162,8 @@ class SiswaResource extends Resource
                         Forms\Components\TextInput::make('asal_sekolah')
                             ->label('Asal Sekolah')
                             ->nullable()
-                            ->maxLength(255),
+                            ->maxLength(255)
+                            ->helperText('Isi jika siswa pindahan atau transfer dari sekolah lain'),
                         
                         Forms\Components\Textarea::make('alasan_keluar')
                             ->label('Alasan Keluar')
@@ -292,7 +300,22 @@ class SiswaResource extends Resource
                                                 if ($pendaftarId) {
                                                     $pendaftar = SiswaPendaftar::find($pendaftarId);
                                                     if ($pendaftar) {
-                                                        return $pendaftar->jenis_kelamin === 'L' ? 'Laki-laki' : 'Perempuan';
+                                                        return $pendaftar->jenis_kelamin === 'laki-laki' ? 'Laki-laki' : 
+                                                               ($pendaftar->jenis_kelamin === 'perempuan' ? 'Perempuan' : '-');
+                                                    }
+                                                }
+                                                return '-';
+                                            })
+                                            ->extraAttributes(['class' => 'text-sm']),
+                                        
+                                        Forms\Components\Placeholder::make('tahun_ajaran_info')
+                                            ->label('Tahun Ajaran (Pendaftaran)')
+                                            ->content(function (callable $get) {
+                                                $pendaftarId = $get('siswa_pendaftar_id');
+                                                if ($pendaftarId) {
+                                                    $pendaftar = SiswaPendaftar::find($pendaftarId);
+                                                    if ($pendaftar && $pendaftar->tahunAjaran) {
+                                                        return $pendaftar->tahunAjaran->nama_tahun_ajaran ?? '-';
                                                     }
                                                 }
                                                 return '-';
@@ -363,7 +386,7 @@ class SiswaResource extends Resource
                                                 $pendaftarId = $get('siswa_pendaftar_id');
                                                 if ($pendaftarId) {
                                                     $pendaftar = SiswaPendaftar::find($pendaftarId);
-                                                    return $pendaftar->telepon_ortu ?? '-';
+                                                    return $pendaftar->no_telp_decrypted ?? '-';
                                                 }
                                                 return '-';
                                             })
@@ -386,13 +409,15 @@ class SiswaResource extends Resource
                                                 if ($pendaftarId) {
                                                     $pendaftar = SiswaPendaftar::find($pendaftarId);
                                                     if ($pendaftar) {
-                                                        $alamat = $pendaftar->alamat_lengkap ?? '';
+                                                        $alamat = $pendaftar->alamat_jalan ?? '';
                                                         $rt = $pendaftar->rt ? 'RT ' . $pendaftar->rt : '';
                                                         $rw = $pendaftar->rw ? 'RW ' . $pendaftar->rw : '';
                                                         $kelurahan = $pendaftar->kelurahan ?? '';
                                                         $kecamatan = $pendaftar->kecamatan ?? '';
+                                                        $kota = $pendaftar->kota ?? '';
+                                                        $kodePos = $pendaftar->kode_pos ?? '';
                                                         
-                                                        $parts = array_filter([$alamat, $rt, $rw, $kelurahan, $kecamatan]);
+                                                        $parts = array_filter([$alamat, $rt, $rw, $kelurahan, $kecamatan, $kota, $kodePos]);
                                                         return implode(', ', $parts);
                                                     }
                                                 }
@@ -427,7 +452,19 @@ class SiswaResource extends Resource
                                             })
                                             ->extraAttributes(['class' => 'text-sm']),
                                         
-                                        // Status Formulir dengan warna teks - PERBAIKAN DI SINI
+                                        Forms\Components\Placeholder::make('usia')
+                                            ->label('Usia')
+                                            ->content(function (callable $get) {
+                                                $pendaftarId = $get('siswa_pendaftar_id');
+                                                if ($pendaftarId) {
+                                                    $pendaftar = SiswaPendaftar::find($pendaftarId);
+                                                    return $pendaftar->usia ? $pendaftar->usia . ' tahun' : '-';
+                                                }
+                                                return '-';
+                                            })
+                                            ->extraAttributes(['class' => 'text-sm']),
+                                        
+                                        // Status Formulir dengan warna teks
                                         Forms\Components\Placeholder::make('status_formulir')
                                             ->label('Status Formulir')
                                             ->content(function (callable $get) {
@@ -451,32 +488,12 @@ class SiswaResource extends Resource
                                                             default => 'text-gray-600',
                                                         };
                                                         
-                                                        // Gunakan HtmlString untuk render HTML
                                                         return new HtmlString(
                                                             '<span class="' . $color . ' font-medium">' . $status . '</span>'
                                                         );
                                                     }
                                                 }
                                                 return '-';
-                                            })
-                                            ->extraAttributes(['class' => 'text-sm']),
-                                        
-                                        // Dokumen Formulir dengan warna teks - PERBAIKAN DI SINI
-                                        Forms\Components\Placeholder::make('formulir_dokumen')
-                                            ->label('Dokumen Formulir')
-                                            ->content(function (callable $get) {
-                                                $pendaftarId = $get('siswa_pendaftar_id');
-                                                if ($pendaftarId) {
-                                                    $pendaftar = SiswaPendaftar::find($pendaftarId);
-                                                    if ($pendaftar && $pendaftar->akte_kelahiran_path) {
-                                                        return new HtmlString(
-                                                            '<span class="text-green-600 font-medium">Tersedia (Akte Kelahiran)</span>'
-                                                        );
-                                                    }
-                                                }
-                                                return new HtmlString(
-                                                    '<span class="text-red-600 font-medium">Tidak tersedia</span>'
-                                                );
                                             })
                                             ->extraAttributes(['class' => 'text-sm']),
                                     ])
@@ -728,7 +745,7 @@ class SiswaResource extends Resource
                         ->form([
                             Forms\Components\Select::make('kelas_id')
                                 ->label('Kelas')
-                                ->options(Kelas::all()->pluck('nama_kelas', 'id_kelas'))
+                                ->options(Kelas::all()->pluck('nama_kelas', 'id'))
                                 ->required(),
                         ])
                         ->action(function ($records, array $data) {

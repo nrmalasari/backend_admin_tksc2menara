@@ -20,7 +20,6 @@ class PembayaranResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-credit-card';
     
-    // TAMBAHKAN INI:
     protected static ?string $navigationLabel = 'Pembayaran';
     protected static ?string $pluralModelLabel = 'Data Pembayaran';
     protected static ?string $modelLabel = 'Pembayaran';
@@ -93,37 +92,57 @@ class PembayaranResource extends Resource
                             ->maxLength(255)
                             ->helperText('Nomor rekening akan dienkripsi secara otomatis')
                             ->hidden(fn (Forms\Get $get): bool => $get('metode_pembayaran') !== 'transfer'),
-                        
+                    ])->hidden(fn (Forms\Get $get): bool => $get('metode_pembayaran') !== 'transfer'),
+                
+                // **PERBAIKAN: Bagian Jumlah Pembayaran dipisah**
+                Forms\Components\Section::make('Jumlah Pembayaran')
+                    ->schema([
                         Forms\Components\TextInput::make('jumlah_pembayaran')
                             ->label('Jumlah Pembayaran')
                             ->numeric()
                             ->prefix('Rp')
                             ->required()
-                            ->hidden(fn (Forms\Get $get): bool => $get('metode_pembayaran') !== 'transfer'),
-                    ])->hidden(fn (Forms\Get $get): bool => $get('metode_pembayaran') !== 'transfer'),
+                            ->rules([
+                                'numeric',
+                                'min:1',
+                            ])
+                            ->helperText(function (Forms\Get $get) {
+                                return $get('metode_pembayaran') === 'manual' 
+                                    ? 'Masukkan jumlah yang dibayarkan di kantor'
+                                    : 'Masukkan jumlah transfer';
+                            }),
+                    ]),
                 
+                // **PERBAIKAN: Bagian Bukti Pembayaran - Admin bisa upload untuk semua metode**
                 Forms\Components\Section::make('Bukti Pembayaran')
                     ->schema([
                         Forms\Components\FileUpload::make('bukti_pembayaran')
                             ->label('Bukti Pembayaran')
-                            ->directory('bukti-pembayaran') // Simpan di storage/app/public/bukti-pembayaran
-                            ->disk('public') // Gunakan disk public
+                            ->directory('bukti-pembayaran')
+                            ->disk('public')
                             ->image()
-                            ->maxSize(5120) // 5MB
-                            ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/jpg', 'image/gif', 'image/webp'])
-                            ->hint('Maksimal 5MB, format: JPG, PNG, GIF, WebP')
-                            ->hidden(fn (Forms\Get $get): bool => $get('metode_pembayaran') === 'manual')
+                            ->maxSize(5120)
+                            ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/jpg', 'image/gif', 'image/webp', 'application/pdf'])
+                            ->hint('Maksimal 5MB, format: JPG, PNG, GIF, WebP, PDF')
+                            ->helperText(function (Forms\Get $get) {
+                                if ($get('metode_pembayaran') === 'manual') {
+                                    return 'Upload bukti pembayaran setelah siswa membayar di kantor';
+                                } else {
+                                    return 'Upload bukti transfer dari siswa';
+                                }
+                            })
                             ->getUploadedFileNameForStorageUsing(
                                 fn (TemporaryUploadedFile $file): string => 
                                     'bukti_' . time() . '_' . Str::random(10) . '.' . $file->getClientOriginalExtension()
                             )
-                            ->uploadingMessage('Sedang mengunggah gambar...')
+                            ->uploadingMessage('Sedang mengunggah file...')
                             ->uploadProgressIndicatorPosition('right')
                             ->hintIcon('heroicon-o-information-circle'),
                         
+                        // Tampilkan info khusus untuk metode manual
                         Forms\Components\Placeholder::make('manual_info')
-                            ->label('Informasi Manual')
-                            ->content('Untuk pembayaran manual, bukti pembayaran akan diupload oleh admin setelah pembayaran dilakukan di kantor.')
+                            ->label('Catatan untuk Pembayaran Manual')
+                            ->content('Untuk pembayaran manual, pastikan siswa telah membayar di kantor sebelum upload bukti pembayaran.')
                             ->hidden(fn (Forms\Get $get): bool => $get('metode_pembayaran') !== 'manual'),
                     ]),
                 
@@ -138,7 +157,15 @@ class PembayaranResource extends Resource
                                 'ditolak' => 'Ditolak',
                             ])
                             ->default('menunggu')
-                            ->required(),
+                            ->required()
+                            ->reactive()
+                            ->afterStateUpdated(function (Forms\Set $set, Forms\Get $get, $state) {
+                                // Jika status diverifikasi dan metode manual, otomatis upload bukti default
+                                if ($state === 'diverifikasi' && $get('metode_pembayaran') === 'manual' && !$get('bukti_pembayaran')) {
+                                    // Set bukti default untuk pembayaran manual yang diverifikasi
+                                    $set('bukti_pembayaran', 'default-payment.png');
+                                }
+                            }),
                         
                         Forms\Components\Textarea::make('catatan_admin')
                             ->label('Catatan Admin')
@@ -190,7 +217,7 @@ class PembayaranResource extends Resource
                     ->money('IDR')
                     ->sortable()
                     ->formatStateUsing(fn ($state, Pembayaran $record) => 
-                        $record->metode_pembayaran === 'manual' ? 'Pembayaran di Kantor' : 'Rp ' . number_format($state, 0, ',', '.')
+                        'Rp ' . number_format($state, 0, ',', '.')
                     ),
                 
                 Tables\Columns\TextColumn::make('tanggal_pembayaran')
@@ -216,7 +243,6 @@ class PembayaranResource extends Resource
                         default => $state,
                     }),
                 
-                // **KOLOM GAMBAR - MENGIKUTI POLA INFOGRAFIS**
                 Tables\Columns\ImageColumn::make('bukti_pembayaran_url')
                     ->label('Bukti')
                     ->getStateUsing(fn ($record) => $record->bukti_pembayaran_url)
@@ -251,6 +277,7 @@ class PembayaranResource extends Resource
                         'manual' => 'Manual',
                     ]),
                 
+                // **PERBAIKAN: Typo diperbaiki di sini**
                 Tables\Filters\Filter::make('tanggal_pembayaran')
                     ->form([
                         Forms\Components\DatePicker::make('dari_tanggal'),
@@ -282,12 +309,45 @@ class PembayaranResource extends Resource
                         return view('filament.components.proof-modal', [
                             'imageUrl' => $record->bukti_pembayaran_url ?? asset('images/default-payment.png'),
                             'isImage' => in_array(pathinfo($record->bukti_pembayaran_url, PATHINFO_EXTENSION), ['jpg', 'jpeg', 'png', 'gif', 'webp']),
+                            'isManual' => $record->metode_pembayaran === 'manual',
                         ]);
                     })
                     ->modalWidth('4xl')
                     ->modalSubmitAction(false)
                     ->modalCancelActionLabel('Tutup')
-                    ->visible(fn (Pembayaran $record) => !empty($record->bukti_pembayaran) && $record->bukti_exists),
+                    ->visible(fn (Pembayaran $record) => !empty($record->bukti_pembayaran) || $record->metode_pembayaran === 'manual'),
+                
+                // Action untuk upload bukti manual
+                Tables\Actions\Action::make('uploadProof')
+                    ->label('Upload Bukti')
+                    ->icon('heroicon-o-cloud-arrow-up')
+                    ->color('primary')
+                    ->form([
+                        Forms\Components\FileUpload::make('bukti_pembayaran')
+                            ->label('Bukti Pembayaran')
+                            ->directory('bukti-pembayaran')
+                            ->disk('public')
+                            ->image()
+                            ->maxSize(5120)
+                            ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/jpg', 'image/gif', 'image/webp', 'application/pdf'])
+                            ->hint('Maksimal 5MB, format: JPG, PNG, GIF, WebP, PDF')
+                            ->required()
+                            ->helperText('Upload bukti pembayaran yang telah diterima di kantor'),
+                    ])
+                    ->action(function (Pembayaran $record, array $data) {
+                        $record->bukti_pembayaran = $data['bukti_pembayaran'];
+                        
+                        // Jika belum diverifikasi, otomatis update status
+                        if ($record->status_pembayaran === 'menunggu') {
+                            $record->status_pembayaran = 'diverifikasi';
+                            $record->catatan_admin = 'Pembayaran manual telah diverifikasi oleh admin';
+                        }
+                        
+                        $record->save();
+                    })
+                    ->visible(fn (Pembayaran $record) => 
+                        $record->metode_pembayaran === 'manual' && empty($record->bukti_pembayaran)
+                    ),
                 
                 Tables\Actions\Action::make('verify')
                     ->label('Verifikasi')
@@ -295,11 +355,23 @@ class PembayaranResource extends Resource
                     ->color('success')
                     ->action(function (Pembayaran $record) {
                         $record->status_pembayaran = 'diverifikasi';
+                        
+                        // Untuk pembayaran manual, set bukti default jika belum ada
+                        if ($record->metode_pembayaran === 'manual' && empty($record->bukti_pembayaran)) {
+                            $record->bukti_pembayaran = 'default-payment.png';
+                            $record->catatan_admin = 'Pembayaran manual telah diverifikasi. Bukti pembayaran diterima di kantor.';
+                        }
+                        
                         $record->save();
                     })
                     ->requiresConfirmation()
                     ->modalHeading('Verifikasi Pembayaran')
-                    ->modalDescription('Apakah Anda yakin ingin memverifikasi pembayaran ini?')
+                    ->modalDescription(function (Pembayaran $record) {
+                        if ($record->metode_pembayaran === 'manual') {
+                            return 'Apakah Anda yakin ingin memverifikasi pembayaran manual ini? Pastikan siswa telah membayar di kantor.';
+                        }
+                        return 'Apakah Anda yakin ingin memverifikasi pembayaran ini?';
+                    })
                     ->visible(fn (Pembayaran $record) => $record->status_pembayaran !== 'diverifikasi'),
                 
                 Tables\Actions\Action::make('reject')
@@ -332,6 +404,12 @@ class PembayaranResource extends Resource
                         ->action(function ($records) {
                             foreach ($records as $record) {
                                 $record->status_pembayaran = 'diverifikasi';
+                                
+                                // Untuk pembayaran manual, set bukti default jika belum ada
+                                if ($record->metode_pembayaran === 'manual' && empty($record->bukti_pembayaran)) {
+                                    $record->bukti_pembayaran = 'default-payment.png';
+                                }
+                                
                                 $record->save();
                             }
                         })
@@ -356,22 +434,14 @@ class PembayaranResource extends Resource
 
      public static function getNavigationBadge(): ?string
     {
-        // Hitung jumlah pembayaran dengan status 'menunggu' atau 'diproses'
         return static::getModel()::whereIn('status_pembayaran', ['menunggu', 'diproses'])->count();
     }
     
-    /**
-     * Warna badge di menu navigasi
-     */
     public static function getNavigationBadgeColor(): string|array|null
     {
-        // Warna kuning untuk status menunggu/diproses
         return 'warning';
     }
     
-    /**
-     * Opsional: Tooltip untuk badge
-     */
     public static function getNavigationBadgeTooltip(): ?string
     {
         $count = static::getModel()::whereIn('status_pembayaran', ['menunggu', 'diproses'])->count();

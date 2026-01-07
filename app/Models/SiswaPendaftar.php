@@ -14,6 +14,7 @@ class SiswaPendaftar extends Model
 
     protected $fillable = [
         'regist_pendaftar_id',
+        'tahun_ajaran_id',
         // Data Anak
         'nama_lengkap',
         'nik',
@@ -414,4 +415,12 @@ class SiswaPendaftar extends Model
     {
         return $this->hasOne(Siswa::class);
     }
+
+    // TAMBAHKAN RELASI INI - Relasi ke TahunAjaran
+    public function tahunAjaran()
+    {
+        return $this->belongsTo(TahunAjaran::class);
+    }
+
+
 }
