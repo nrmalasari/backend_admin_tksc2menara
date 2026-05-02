@@ -39,7 +39,7 @@ class GuruResource extends Resource
                         Forms\Components\FileUpload::make('foto_path')
                             ->label('Foto Guru')
                             ->directory('guru/foto')
-                            ->disk('public')
+                            ->disk('cloudinary')
                             ->image()
                             ->maxSize(2048)
                             ->imageEditor()
@@ -65,7 +65,7 @@ class GuruResource extends Resource
                             ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/jpg', 'image/gif', 'image/webp'])
                             ->saveUploadedFileUsing(function (TemporaryUploadedFile $file) {
                                 $filename = 'guru_' . time() . '_' . Str::random(10) . '.' . $file->getClientOriginalExtension();
-                                $path = $file->storeAs('guru/foto', $filename, 'public');
+                                $path = $file->storeAs('guru/foto', $filename, 'cloudinary');
                                 return $path;
                             })
                             ->columnSpanFull(),
@@ -180,6 +180,7 @@ class GuruResource extends Resource
             ->columns([
                 Tables\Columns\ImageColumn::make('foto_url')
                     ->label('Foto')
+                    ->disk('cloudinary')
                     ->square()
                     ->defaultImageUrl(asset('images/default-avatar.png'))
                     ->extraImgAttributes(['class' => 'object-cover rounded'])

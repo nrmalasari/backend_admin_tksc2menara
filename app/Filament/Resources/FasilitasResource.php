@@ -52,7 +52,7 @@ class FasilitasResource extends Resource
                             ->label('Gambar Fasilitas')
                             ->image()
                             ->directory('fasilitas')
-                            ->disk('public')
+                            ->disk('cloudinary')
                             ->preserveFilenames()
                             ->maxSize(5120) // 5MB (naikkan dari 2MB)
                             ->helperText('Ukuran maksimal 5MB. Format: JPG, PNG, WebP. Gambar akan disimpan sesuai ukuran asli.')
@@ -94,7 +94,7 @@ class FasilitasResource extends Resource
                 
                 Tables\Columns\ImageColumn::make('gambar_url')
                     ->label('Gambar')
-                    ->disk('public')
+                    ->disk('cloudinary')
                     ->square()
                     ->size(50)
                     ->defaultImageUrl(url('/images/default-fasilitas.png'))

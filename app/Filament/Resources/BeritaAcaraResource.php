@@ -35,7 +35,7 @@ class BeritaAcaraResource extends Resource
                             ->label('Foto Utama')
                             ->image()
                             ->directory('berita-acara')
-                            ->disk('public')
+                            ->disk('cloudinary')
                             ->maxSize(2048)
                             ->getUploadedFileNameForStorageUsing(
                                 fn (TemporaryUploadedFile $file): string => 
@@ -89,7 +89,7 @@ class BeritaAcaraResource extends Resource
                                     ->label('Upload Foto')
                                     ->image()
                                     ->directory('berita-acara/gallery')
-                                    ->disk('public')
+                                    ->disk('cloudinary')
                                     ->maxSize(2048)
                                     ->getUploadedFileNameForStorageUsing(
                                         fn (TemporaryUploadedFile $file): string => 
@@ -154,6 +154,7 @@ class BeritaAcaraResource extends Resource
             ->columns([
                 Tables\Columns\ImageColumn::make('thumbnail_url')
                     ->label('Foto Utama')
+                    ->disk('cloudinary')
                     ->square()
                     ->defaultImageUrl(asset('images/default-news.png'))
                     ->extraImgAttributes(['class' => 'object-cover rounded'])

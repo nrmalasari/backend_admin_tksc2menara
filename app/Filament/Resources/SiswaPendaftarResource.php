@@ -546,7 +546,7 @@ class SiswaPendaftarResource extends Resource
                 // PERBAIKAN: Kolom Kartu Keluarga
                 Tables\Columns\ImageColumn::make('kartu_keluarga_path')
                     ->label('KK')
-                    ->checkFileExistence(false)
+                    ->disk('cloudinary')
                     ->height(40)
                     ->width(40)
                     ->grow(false)
@@ -570,7 +570,7 @@ class SiswaPendaftarResource extends Resource
                 // PERBAIKAN: Kolom KIA
                 Tables\Columns\ImageColumn::make('kia_path')
                     ->label('KIA')
-                    ->checkFileExistence(false)
+                    ->disk('cloudinary')
                     ->height(40)
                     ->width(40)
                     ->grow(false)
@@ -594,7 +594,7 @@ class SiswaPendaftarResource extends Resource
                 // PERBAIKAN: Kolom BPJS
                 Tables\Columns\ImageColumn::make('bpjs_path')
                     ->label('BPJS')
-                    ->checkFileExistence(false)
+                    ->disk('cloudinary')
                     ->height(40)
                     ->width(40)
                     ->grow(false)

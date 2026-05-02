@@ -39,7 +39,7 @@ class StrukturOrganisasiResource extends Resource
                             ->label('Gambar Struktur')
                             ->image()
                             ->directory('struktur-organisasi')
-                            ->disk('public')
+                            ->disk('cloudinary')
                             ->preserveFilenames()
                             ->maxSize(10240) // 10MB (naikkan dari 5MB)
                             ->helperText('Ukuran maksimal 10MB. Format: JPG, PNG, WebP. Gambar akan disimpan sesuai ukuran asli.')
@@ -69,6 +69,7 @@ class StrukturOrganisasiResource extends Resource
             ->columns([
                 Tables\Columns\ImageColumn::make('gambar_url')
                     ->label('Gambar')
+                    ->disk('cloudinary')
                     ->square()
                     ->size(50)
                     ->defaultImageUrl(url('/images/default-struktur.png'))

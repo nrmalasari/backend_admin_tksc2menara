@@ -207,7 +207,7 @@ class SiswaResource extends Resource
                         Forms\Components\FileUpload::make('foto_path')
                             ->label('Foto Siswa')
                             ->directory('siswa/foto')
-                            ->disk('public')
+                            ->disk('cloudinary')
                             ->image()
                             ->maxSize(2048)
                             ->imageEditor()
@@ -233,7 +233,7 @@ class SiswaResource extends Resource
                             ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/jpg', 'image/gif', 'image/webp'])
                             ->saveUploadedFileUsing(function (TemporaryUploadedFile $file) {
                                 $filename = 'foto_' . time() . '_' . Str::random(10) . '.' . $file->getClientOriginalExtension();
-                                $path = $file->storeAs('siswa/foto', $filename, 'public');
+                                $path = $file->storeAs('siswa/foto', $filename, 'cloudinary');
                                 return $path;
                             }),
                         
@@ -242,7 +242,7 @@ class SiswaResource extends Resource
                             ->label('Formulir Pendaftaran')
                             ->helperText('Hanya untuk siswa yang didaftarkan manual. Untuk siswa dari pendaftaran, dokumen sudah ada di sistem.')
                             ->directory('siswa/formulir')
-                            ->disk('public')
+                            ->disk('cloudinary')
                             ->acceptedFileTypes(['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'])
                             ->maxSize(5120)
                             ->getUploadedFileNameForStorageUsing(
@@ -263,7 +263,7 @@ class SiswaResource extends Resource
                             ->visible(fn (callable $get) => empty($get('siswa_pendaftar_id')))
                             ->saveUploadedFileUsing(function (TemporaryUploadedFile $file) {
                                 $filename = 'formulir_' . time() . '_' . Str::random(10) . '.' . $file->getClientOriginalExtension();
-                                $path = $file->storeAs('siswa/formulir', $filename, 'public');
+                                $path = $file->storeAs('siswa/formulir', $filename, 'cloudinary');
                                 return $path;
                             }),
                     ])->columns(2),
@@ -778,6 +778,7 @@ class SiswaResource extends Resource
             ->columns([
                 Tables\Columns\ImageColumn::make('foto_url')
                     ->label('Foto')
+                    ->disk('cloudinary')
                     ->square()
                     ->defaultImageUrl(asset('images/default-avatar.png'))
                     ->extraImgAttributes(['class' => 'object-cover rounded'])

@@ -34,6 +34,7 @@ class SambutanKepalaSekolahResource extends Resource
                             ->label('Upload Foto')
                             ->image()
                             ->directory('sambutan-kepala-sekolah')
+                            ->disk('cloudinary')
                             ->preserveFilenames()
                             ->maxSize(2048) // 2MB
                             ->imageResizeMode('cover')
@@ -74,6 +75,7 @@ class SambutanKepalaSekolahResource extends Resource
                 Tables\Columns\ImageColumn::make('foto')
                     ->label('Foto')
                     ->circular()
+                    ->disk('cloudinary')
                     ->size(50)
                     ->getStateUsing(fn ($record) => $record->foto_url)
                     ->defaultImageUrl(asset('images/default-profile.png')),
