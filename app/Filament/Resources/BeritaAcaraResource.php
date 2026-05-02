@@ -63,7 +63,7 @@ class BeritaAcaraResource extends Resource
                             ->required()
                             ->default(now())
                             ->displayFormat('d/m/Y')
-                            ->native(false),
+                            ->native(true),
                         
                         Forms\Components\Textarea::make('deskripsi')
                             ->label('Deskripsi')
@@ -142,7 +142,7 @@ class BeritaAcaraResource extends Resource
                             ])
                             ->default('draft')
                             ->required()
-                            ->native(false)
+                            ->native(true)
                             ->helperText('Pilih status publikasi berita'),
                     ]),
             ]);

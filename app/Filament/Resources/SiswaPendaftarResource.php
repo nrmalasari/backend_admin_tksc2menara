@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Str;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
+use Illuminate\Support\Facades\Storage;
 
 class SiswaPendaftarResource extends Resource
 {
@@ -66,7 +67,6 @@ class SiswaPendaftarResource extends Resource
                             ->preload()
                             ->required(),
                         
-                        // Tambahkan field tahun_ajaran_id di form
                         Forms\Components\Select::make('tahun_ajaran_id')
                             ->label('Tahun Ajaran')
                             ->relationship('tahunAjaran', 'nama_tahun_ajaran')
@@ -84,7 +84,7 @@ class SiswaPendaftarResource extends Resource
                             ])
                             ->default('menunggu')
                             ->required(),
-                    ])->columns(3), // Ubah menjadi 3 kolom untuk menampung field baru
+                    ])->columns(3),
                 
                 Forms\Components\Section::make('A. Data Anak')
                     ->schema([
@@ -347,8 +347,9 @@ class SiswaPendaftarResource extends Resource
                     ->schema([
                         Forms\Components\FileUpload::make('akte_kelahiran_path')
                             ->label('Akte Kelahiran')
-                            ->directory('siswa/dokumen')
-                            ->disk('public')
+                            ->disk('rahasia') // SIMPAN KE DISK RAHASIA
+                            ->directory('') // Langsung di dalam folder secure-files
+                            ->visibility('private')
                             ->preserveFilenames()
                             ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'])
                             ->maxSize(2048)
@@ -361,8 +362,9 @@ class SiswaPendaftarResource extends Resource
                         
                         Forms\Components\FileUpload::make('kartu_keluarga_path')
                             ->label('Kartu Keluarga')
-                            ->directory('siswa/dokumen')
-                            ->disk('public')
+                            ->disk('rahasia') // SIMPAN KE DISK RAHASIA
+                            ->directory('') // Langsung di dalam folder secure-files
+                            ->visibility('private')
                             ->preserveFilenames()
                             ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'])
                             ->maxSize(2048)
@@ -375,8 +377,9 @@ class SiswaPendaftarResource extends Resource
                         
                         Forms\Components\FileUpload::make('kia_path')
                             ->label('KIA')
-                            ->directory('siswa/dokumen')
-                            ->disk('public')
+                            ->disk('rahasia') // SIMPAN KE DISK RAHASIA
+                            ->directory('') // Langsung di dalam folder secure-files
+                            ->visibility('private')
                             ->preserveFilenames()
                             ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'])
                             ->maxSize(2048)
@@ -389,8 +392,9 @@ class SiswaPendaftarResource extends Resource
                         
                         Forms\Components\FileUpload::make('bpjs_path')
                             ->label('BPJS')
-                            ->directory('siswa/dokumen')
-                            ->disk('public')
+                            ->disk('rahasia') // SIMPAN KE DISK RAHASIA
+                            ->directory('') // Langsung di dalam folder secure-files
+                            ->visibility('private')
                             ->preserveFilenames()
                             ->acceptedFileTypes(['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'])
                             ->maxSize(2048)
@@ -419,7 +423,7 @@ class SiswaPendaftarResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('registPendaftar.username')
                     ->label('Username')
-                    ->searchable()
+                    ->searchable(['username']) // Hanya search di kolom username relasi
                     ->sortable(),
                 
                 Tables\Columns\TextColumn::make('nama_lengkap')
@@ -429,16 +433,15 @@ class SiswaPendaftarResource extends Resource
                 
                 Tables\Columns\TextColumn::make('nik_decrypted')
                     ->label('NIK')
-                    ->searchable()
-                    ->sortable()
+                    ->searchable(false)
+                    ->sortable(false)
                     ->copyable()
                     ->copyMessage('NIK disalin ke clipboard')
                     ->copyMessageDuration(1500),
                 
-                // Tambahkan kolom tahun ajaran
                 Tables\Columns\TextColumn::make('tahunAjaran.nama_tahun_ajaran')
                     ->label('Tahun Ajaran')
-                    ->searchable()
+                    ->searchable(['nama_tahun_ajaran'])
                     ->sortable(),
                 
                 Tables\Columns\TextColumn::make('tempat_lahir')
@@ -484,14 +487,14 @@ class SiswaPendaftarResource extends Resource
                 
                 Tables\Columns\TextColumn::make('no_telp_decrypted')
                     ->label('No. Telpon')
-                    ->searchable()
-                    ->sortable()
+                    ->searchable(false)
+                    ->sortable(false)
                     ->toggleable(isToggledHiddenByDefault: true),
                 
                 Tables\Columns\TextColumn::make('formatted_penghasilan')
                     ->label('Penghasilan')
-                    ->searchable()
-                    ->sortable()
+                    ->searchable(false)
+                    ->sortable(false)
                     ->toggleable(isToggledHiddenByDefault: true),
                 
                 Tables\Columns\TextColumn::make('status')
@@ -512,48 +515,104 @@ class SiswaPendaftarResource extends Resource
                         default => $state,
                     }),
                 
-                Tables\Columns\ImageColumn::make('akte_kelahiran_url')
+                // PERBAIKAN: Kolom Akte Kelahiran dengan getStateUsing khusus untuk preview
+                Tables\Columns\ImageColumn::make('akte_kelahiran_path')
                     ->label('Akte')
-                    ->getStateUsing(fn ($record) => $record->akte_kelahiran_url)
+                    ->checkFileExistence(false) // Jangan cek file fisik
                     ->height(40)
                     ->width(40)
                     ->grow(false)
                     ->defaultImageUrl(asset('images/default-document.png'))
                     ->extraImgAttributes(['class' => 'object-cover rounded'])
-                    ->url(fn ($record) => $record->akte_kelahiran_url)
+                    ->getStateUsing(function ($record) {
+                        // Jika file ada dan berupa gambar, berikan preview URL
+                        if ($record->akte_kelahiran_path && $record->akte_kelahiran_exists) {
+                            // Cek apakah file adalah gambar (bukan PDF)
+                            $extension = strtolower(pathinfo($record->akte_kelahiran_path, PATHINFO_EXTENSION));
+                            if (in_array($extension, ['jpg', 'jpeg', 'png', 'gif', 'webp'])) {
+                                // Return URL route proxy untuk preview
+                                return route('ambil.file.rahasia', ['filename' => basename($record->akte_kelahiran_path)]);
+                            }
+                        }
+                        // Default image untuk PDF atau file tidak ada
+                        return asset('images/default-document.png');
+                    })
+                    ->url(fn ($record) => $record->akte_kelahiran_path 
+                        ? route('ambil.file.rahasia', ['filename' => basename($record->akte_kelahiran_path)]) 
+                        : null
+                    )
                     ->openUrlInNewTab(),
                 
-                Tables\Columns\ImageColumn::make('kartu_keluarga_url')
+                // PERBAIKAN: Kolom Kartu Keluarga
+                Tables\Columns\ImageColumn::make('kartu_keluarga_path')
                     ->label('KK')
-                    ->getStateUsing(fn ($record) => $record->kartu_keluarga_url)
+                    ->checkFileExistence(false)
                     ->height(40)
                     ->width(40)
                     ->grow(false)
                     ->defaultImageUrl(asset('images/default-document.png'))
                     ->extraImgAttributes(['class' => 'object-cover rounded'])
-                    ->url(fn ($record) => $record->kartu_keluarga_url)
+                    ->getStateUsing(function ($record) {
+                        if ($record->kartu_keluarga_path && $record->kartu_keluarga_exists) {
+                            $extension = strtolower(pathinfo($record->kartu_keluarga_path, PATHINFO_EXTENSION));
+                            if (in_array($extension, ['jpg', 'jpeg', 'png', 'gif', 'webp'])) {
+                                return route('ambil.file.rahasia', ['filename' => basename($record->kartu_keluarga_path)]);
+                            }
+                        }
+                        return asset('images/default-document.png');
+                    })
+                    ->url(fn ($record) => $record->kartu_keluarga_path 
+                        ? route('ambil.file.rahasia', ['filename' => basename($record->kartu_keluarga_path)]) 
+                        : null
+                    )
                     ->openUrlInNewTab(),
                 
-                Tables\Columns\ImageColumn::make('kia_url')
+                // PERBAIKAN: Kolom KIA
+                Tables\Columns\ImageColumn::make('kia_path')
                     ->label('KIA')
-                    ->getStateUsing(fn ($record) => $record->kia_url)
+                    ->checkFileExistence(false)
                     ->height(40)
                     ->width(40)
                     ->grow(false)
                     ->defaultImageUrl(asset('images/default-document.png'))
                     ->extraImgAttributes(['class' => 'object-cover rounded'])
-                    ->url(fn ($record) => $record->kia_url)
+                    ->getStateUsing(function ($record) {
+                        if ($record->kia_path && $record->kia_exists) {
+                            $extension = strtolower(pathinfo($record->kia_path, PATHINFO_EXTENSION));
+                            if (in_array($extension, ['jpg', 'jpeg', 'png', 'gif', 'webp'])) {
+                                return route('ambil.file.rahasia', ['filename' => basename($record->kia_path)]);
+                            }
+                        }
+                        return asset('images/default-document.png');
+                    })
+                    ->url(fn ($record) => $record->kia_path 
+                        ? route('ambil.file.rahasia', ['filename' => basename($record->kia_path)]) 
+                        : null
+                    )
                     ->openUrlInNewTab(),
                 
-                Tables\Columns\ImageColumn::make('bpjs_url')
+                // PERBAIKAN: Kolom BPJS
+                Tables\Columns\ImageColumn::make('bpjs_path')
                     ->label('BPJS')
-                    ->getStateUsing(fn ($record) => $record->bpjs_url)
+                    ->checkFileExistence(false)
                     ->height(40)
                     ->width(40)
                     ->grow(false)
                     ->defaultImageUrl(asset('images/default-document.png'))
                     ->extraImgAttributes(['class' => 'object-cover rounded'])
-                    ->url(fn ($record) => $record->bpjs_url)
+                    ->getStateUsing(function ($record) {
+                        if ($record->bpjs_path && $record->bpjs_exists) {
+                            $extension = strtolower(pathinfo($record->bpjs_path, PATHINFO_EXTENSION));
+                            if (in_array($extension, ['jpg', 'jpeg', 'png', 'gif', 'webp'])) {
+                                return route('ambil.file.rahasia', ['filename' => basename($record->bpjs_path)]);
+                            }
+                        }
+                        return asset('images/default-document.png');
+                    })
+                    ->url(fn ($record) => $record->bpjs_path 
+                        ? route('ambil.file.rahasia', ['filename' => basename($record->bpjs_path)]) 
+                        : null
+                    )
                     ->openUrlInNewTab(),
                 
                 Tables\Columns\TextColumn::make('created_at')
@@ -563,7 +622,6 @@ class SiswaPendaftarResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                // Tambahkan filter berdasarkan tahun ajaran
                 Tables\Filters\SelectFilter::make('tahun_ajaran_id')
                     ->label('Tahun Ajaran')
                     ->relationship('tahunAjaran', 'nama_tahun_ajaran')
@@ -653,25 +711,33 @@ class SiswaPendaftarResource extends Resource
                                 'documents' => [
                                     [
                                         'name' => 'Akte Kelahiran',
-                                        'url' => $record->akte_kelahiran_url,
+                                        'url' => $record->akte_kelahiran_path 
+                                            ? route('ambil.file.rahasia', ['filename' => basename($record->akte_kelahiran_path)])
+                                            : null,
                                         'exists' => $record->akte_kelahiran_exists,
                                         'path' => $record->akte_kelahiran_path,
                                     ],
                                     [
                                         'name' => 'Kartu Keluarga',
-                                        'url' => $record->kartu_keluarga_url,
+                                        'url' => $record->kartu_keluarga_path 
+                                            ? route('ambil.file.rahasia', ['filename' => basename($record->kartu_keluarga_path)])
+                                            : null,
                                         'exists' => $record->kartu_keluarga_exists,
                                         'path' => $record->kartu_keluarga_path,
                                     ],
                                     [
                                         'name' => 'KIA',
-                                        'url' => $record->kia_url,
+                                        'url' => $record->kia_path 
+                                            ? route('ambil.file.rahasia', ['filename' => basename($record->kia_path)])
+                                            : null,
                                         'exists' => $record->kia_exists,
                                         'path' => $record->kia_path,
                                     ],
                                     [
                                         'name' => 'BPJS',
-                                        'url' => $record->bpjs_url,
+                                        'url' => $record->bpjs_path 
+                                            ? route('ambil.file.rahasia', ['filename' => basename($record->bpjs_path)])
+                                            : null,
                                         'exists' => $record->bpjs_exists,
                                         'path' => $record->bpjs_path,
                                     ],

@@ -5,6 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Database\Eloquent\Builder;
 
 class SiswaPendaftar extends Model
 {
@@ -95,7 +97,22 @@ class SiswaPendaftar extends Model
         return $this->belongsTo(RegistPendaftar::class);
     }
 
-    // Kunci dan IV untuk AES
+    // Relasi ke TahunAjaran
+    public function tahunAjaran()
+    {
+        return $this->belongsTo(TahunAjaran::class);
+    }
+
+    // Relasi ke Siswa
+    public function siswa()
+    {
+        return $this->hasOne(Siswa::class);
+    }
+
+    // ============================
+    // ENKRIPSI DAN DEKRIPSI
+    // ============================
+
     private function getEncryptionKey()
     {
         $appKey = config('app.key');
@@ -110,151 +127,34 @@ class SiswaPendaftar extends Model
         return '0123456789abcdef';
     }
 
-    // ============================
-    // ENCRYPTION SETTERS
-    // ============================
-
-    public function setNikAttribute($value)
-    {
-        if (!empty($value) && $value !== null) {
-            $this->attributes['nik'] = $this->encryptAES($value);
-        } else {
-            $this->attributes['nik'] = null;
-        }
-    }
-
-    public function setNikAyahAttribute($value)
-    {
-        if (!empty($value) && $value !== null) {
-            $this->attributes['nik_ayah'] = $this->encryptAES($value);
-        } else {
-            $this->attributes['nik_ayah'] = null;
-        }
-    }
-
-    public function setNikIbuAttribute($value)
-    {
-        if (!empty($value) && $value !== null) {
-            $this->attributes['nik_ibu'] = $this->encryptAES($value);
-        } else {
-            $this->attributes['nik_ibu'] = null;
-        }
-    }
-
-    public function setNoTelpAttribute($value)
-    {
-        if (!empty($value) && $value !== null) {
-            $this->attributes['no_telp'] = $this->encryptAES($value);
-        } else {
-            $this->attributes['no_telp'] = null;
-        }
-    }
-
-    public function setPenghasilanAttribute($value)
-    {
-        if (!empty($value) && $value !== null) {
-            // Konversi ke string untuk enkripsi
-            $stringValue = (string)$value;
-            $this->attributes['penghasilan'] = $this->encryptAES($stringValue);
-        } else {
-            $this->attributes['penghasilan'] = $this->encryptAES('0');
-        }
-    }
-
-    // ============================
-    // DECRYPTION GETTERS
-    // ============================
-
-    public function getNikDecryptedAttribute()
-    {
-        if (isset($this->attributes['nik']) && !empty($this->attributes['nik'])) {
-            try {
-                return $this->decryptAES($this->attributes['nik']);
-            } catch (\Exception $e) {
-                \Log::error('NIK Decryption error: ' . $e->getMessage());
-                return '';
-            }
-        }
-        return '';
-    }
-
-    public function getNikAyahDecryptedAttribute()
-    {
-        if (isset($this->attributes['nik_ayah']) && !empty($this->attributes['nik_ayah'])) {
-            try {
-                return $this->decryptAES($this->attributes['nik_ayah']);
-            } catch (\Exception $e) {
-                \Log::error('NIK Ayah Decryption error: ' . $e->getMessage());
-                return '';
-            }
-        }
-        return '';
-    }
-
-    public function getNikIbuDecryptedAttribute()
-    {
-        if (isset($this->attributes['nik_ibu']) && !empty($this->attributes['nik_ibu'])) {
-            try {
-                return $this->decryptAES($this->attributes['nik_ibu']);
-            } catch (\Exception $e) {
-                \Log::error('NIK Ibu Decryption error: ' . $e->getMessage());
-                return '';
-            }
-        }
-        return '';
-    }
-
-    public function getNoTelpDecryptedAttribute()
-    {
-        if (isset($this->attributes['no_telp']) && !empty($this->attributes['no_telp'])) {
-            try {
-                return $this->decryptAES($this->attributes['no_telp']);
-            } catch (\Exception $e) {
-                \Log::error('No. Telp Decryption error: ' . $e->getMessage());
-                return '';
-            }
-        }
-        return '';
-    }
-
-    public function getPenghasilanDecryptedAttribute()
-    {
-        if (isset($this->attributes['penghasilan']) && !empty($this->attributes['penghasilan'])) {
-            try {
-                $decrypted = $this->decryptAES($this->attributes['penghasilan']);
-                return (float)$decrypted;
-            } catch (\Exception $e) {
-                \Log::error('Penghasilan Decryption error: ' . $e->getMessage());
-                return 0;
-            }
-        }
-        return 0;
-    }
-
-    // ============================
-    // ENCRYPTION/DECRYPTION METHODS
-    // ============================
-
     public function encryptAES($data)
     {
         try {
+            if (empty($data)) {
+                return null;
+            }
+            
             $key = $this->getEncryptionKey();
             $iv = $this->getEncryptionIV();
             
-            $encrypted = openssl_encrypt($data, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv);
+            $encrypted = openssl_encrypt((string)$data, 'AES-256-CBC', $key, OPENSSL_RAW_DATA, $iv);
             if ($encrypted === false) {
                 throw new \Exception('Encryption failed: ' . openssl_error_string());
             }
             return base64_encode($encrypted);
         } catch (\Exception $e) {
             \Log::error('Encryption error: ' . $e->getMessage());
-            return $data;
+            return null;
         }
     }
 
     public function decryptAES($data)
     {
         try {
+            if (empty($data)) {
+                return '';
+            }
+            
             $key = $this->getEncryptionKey();
             $iv = $this->getEncryptionIV();
             
@@ -270,7 +170,102 @@ class SiswaPendaftar extends Model
     }
 
     // ============================
-    // FORMATTERS DAN URL GAMBAR
+    // MUTATORS (ENKRIPSI)
+    // ============================
+
+    public function setNikAttribute($value)
+    {
+        if (!empty($value)) {
+            $this->attributes['nik'] = $this->encryptAES($value);
+        } else {
+            $this->attributes['nik'] = null;
+        }
+    }
+
+    public function setNikAyahAttribute($value)
+    {
+        if (!empty($value)) {
+            $this->attributes['nik_ayah'] = $this->encryptAES($value);
+        } else {
+            $this->attributes['nik_ayah'] = null;
+        }
+    }
+
+    public function setNikIbuAttribute($value)
+    {
+        if (!empty($value)) {
+            $this->attributes['nik_ibu'] = $this->encryptAES($value);
+        } else {
+            $this->attributes['nik_ibu'] = null;
+        }
+    }
+
+    public function setNoTelpAttribute($value)
+    {
+        if (!empty($value)) {
+            $this->attributes['no_telp'] = $this->encryptAES($value);
+        } else {
+            $this->attributes['no_telp'] = null;
+        }
+    }
+
+    public function setPenghasilanAttribute($value)
+    {
+        if (!empty($value) && $value !== null) {
+            $stringValue = (string)$value;
+            $this->attributes['penghasilan'] = $this->encryptAES($stringValue);
+        } else {
+            $this->attributes['penghasilan'] = $this->encryptAES('0');
+        }
+    }
+
+    // ============================
+    // ACCESSORS (DEKRIPSI)
+    // ============================
+
+    public function getNikDecryptedAttribute()
+    {
+        if (isset($this->attributes['nik']) && !empty($this->attributes['nik'])) {
+            return $this->decryptAES($this->attributes['nik']);
+        }
+        return '';
+    }
+
+    public function getNikAyahDecryptedAttribute()
+    {
+        if (isset($this->attributes['nik_ayah']) && !empty($this->attributes['nik_ayah'])) {
+            return $this->decryptAES($this->attributes['nik_ayah']);
+        }
+        return '';
+    }
+
+    public function getNikIbuDecryptedAttribute()
+    {
+        if (isset($this->attributes['nik_ibu']) && !empty($this->attributes['nik_ibu'])) {
+            return $this->decryptAES($this->attributes['nik_ibu']);
+        }
+        return '';
+    }
+
+    public function getNoTelpDecryptedAttribute()
+    {
+        if (isset($this->attributes['no_telp']) && !empty($this->attributes['no_telp'])) {
+            return $this->decryptAES($this->attributes['no_telp']);
+        }
+        return '';
+    }
+
+    public function getPenghasilanDecryptedAttribute()
+    {
+        if (isset($this->attributes['penghasilan']) && !empty($this->attributes['penghasilan'])) {
+            $decrypted = $this->decryptAES($this->attributes['penghasilan']);
+            return (float)$decrypted;
+        }
+        return 0;
+    }
+
+    // ============================
+    // FORMATTERS
     // ============================
 
     public function getFormattedTanggalLahirAttribute()
@@ -306,8 +301,13 @@ class SiswaPendaftar extends Model
         };
     }
 
+    // ============================
+    // URL DOKUMEN - PERBAIKAN UTAMA
+    // ============================
+
     /**
-     * Helper untuk mendapatkan URL dokumen dengan benar
+     * Generate URL untuk file dokumen
+     * Sekarang menggunakan route proxy: /lihat-file/{filename}
      */
     private function getDocumentUrl($path)
     {
@@ -315,31 +315,71 @@ class SiswaPendaftar extends Model
             return null;
         }
         
-        // Hapus 'storage/' atau 'public/' jika ada di awal
+        \Log::info('Getting document URL for path: ' . $path);
+        
         $cleanPath = $path;
-        if (strpos($cleanPath, 'storage/') === 0) {
-            $cleanPath = substr($cleanPath, 8);
-        }
-        if (strpos($cleanPath, 'public/') === 0) {
-            $cleanPath = substr($cleanPath, 7);
-        }
         
-        // Cek apakah file ada di storage
-        if (Storage::disk('public')->exists($cleanPath)) {
-            return asset('storage/' . $cleanPath);
-        }
+        // 1. Hapus prefix storage/ atau public/ jika ada
+        $cleanPath = str_replace(['storage/', 'public/'], '', $cleanPath);
         
-        // Coba akses langsung jika file ada di public
-        $publicPath = public_path($path);
-        if (file_exists($publicPath)) {
-            return asset($path);
-        }
+        // 2. Hapus api/secure-files/ jika ada (kita hanya butuh filename)
+        $cleanPath = str_replace('api/secure-files/', '', $cleanPath);
         
-        return null;
+        // 3. Hapus siswa/dokumen/ jika ada
+        $cleanPath = str_replace('siswa/dokumen/', '', $cleanPath);
+        
+        // 4. Ambil hanya filename
+        $filename = basename($cleanPath);
+        
+        // 5. Generate URL menggunakan route proxy
+        try {
+            $url = route('ambil.file.rahasia', ['filename' => $filename]);
+            \Log::info('Generated route proxy URL: ' . $url);
+            return $url;
+        } catch (\Exception $e) {
+            \Log::error('Failed to generate route URL: ' . $e->getMessage());
+            
+            // Fallback ke URL langsung jika route tidak ada
+            $fallbackUrl = url('/lihat-file/' . $filename);
+            \Log::info('Using fallback URL: ' . $fallbackUrl);
+            return $fallbackUrl;
+        }
     }
 
     /**
-     * Helper untuk cek apakah dokumen ada
+     * Get the URL for akte kelahiran
+     */
+    public function getAkteKelahiranUrlAttribute()
+    {
+        return $this->getDocumentUrl($this->akte_kelahiran_path);
+    }
+
+    /**
+     * Get the URL for kartu keluarga
+     */
+    public function getKartuKeluargaUrlAttribute()
+    {
+        return $this->getDocumentUrl($this->kartu_keluarga_path);
+    }
+
+    /**
+     * Get the URL for KIA
+     */
+    public function getKiaUrlAttribute()
+    {
+        return $this->getDocumentUrl($this->kia_path);
+    }
+
+    /**
+     * Get the URL for BPJS
+     */
+    public function getBpjsUrlAttribute()
+    {
+        return $this->getDocumentUrl($this->bpjs_path);
+    }
+
+    /**
+     * Cek apakah file benar-benar ada di storage
      */
     private function documentExists($path)
     {
@@ -348,54 +388,229 @@ class SiswaPendaftar extends Model
         }
         
         $cleanPath = $path;
-        if (strpos($cleanPath, 'storage/') === 0) {
-            $cleanPath = substr($cleanPath, 8);
-        }
-        if (strpos($cleanPath, 'public/') === 0) {
-            $cleanPath = substr($cleanPath, 7);
+        
+        // 1. Hapus prefix
+        $cleanPath = str_replace(['storage/', 'public/'], '', $cleanPath);
+        
+        // 2. Hapus api/secure-files/ atau siswa/dokumen/ untuk dapat filename
+        $cleanPath = str_replace(['api/secure-files/', 'siswa/dokumen/'], '', $cleanPath);
+        
+        // 3. Cek file di disk 'rahasia' (storage/app/secure-files/)
+        $filename = basename($cleanPath);
+        
+        $exists = Storage::disk('rahasia')->exists($filename);
+        
+        if (!$exists) {
+            \Log::warning('File not found in secure storage: ' . $filename);
+            
+            // Coba cari di lokasi alternatif (public disk untuk backward compatibility)
+            $possiblePaths = [
+                'api/secure-files/' . $filename,
+                'siswa/dokumen/' . $filename,
+                $filename
+            ];
+            
+            foreach ($possiblePaths as $tryPath) {
+                if (Storage::disk('public')->exists($tryPath)) {
+                    \Log::info('Found file at alternative path: ' . $tryPath);
+                    return true;
+                }
+            }
         }
         
-        return Storage::disk('public')->exists($cleanPath);
+        return $exists;
     }
 
-    public function getAkteKelahiranUrlAttribute()
-    {
-        return $this->getDocumentUrl($this->akte_kelahiran_path);
-    }
-
-    public function getKartuKeluargaUrlAttribute()
-    {
-        return $this->getDocumentUrl($this->kartu_keluarga_path);
-    }
-
-    public function getKiaUrlAttribute()
-    {
-        return $this->getDocumentUrl($this->kia_path);
-    }
-
-    public function getBpjsUrlAttribute()
-    {
-        return $this->getDocumentUrl($this->bpjs_path);
-    }
-
+    /**
+     * Check if akte kelahiran file exists
+     */
     public function getAkteKelahiranExistsAttribute()
     {
         return $this->documentExists($this->akte_kelahiran_path);
     }
 
+    /**
+     * Check if kartu keluarga file exists
+     */
     public function getKartuKeluargaExistsAttribute()
     {
         return $this->documentExists($this->kartu_keluarga_path);
     }
 
+    /**
+     * Check if KIA file exists
+     */
     public function getKiaExistsAttribute()
     {
         return $this->documentExists($this->kia_path);
     }
 
+    /**
+     * Check if BPJS file exists
+     */
     public function getBpjsExistsAttribute()
     {
         return $this->documentExists($this->bpjs_path);
+    }
+
+    // ============================
+    // HELPER UNTUK DEBUGGING
+    // ============================
+
+    /**
+     * Debug info untuk file
+     */
+    public function getFileDebugInfo()
+    {
+        return [
+            'akte' => [
+                'db_path' => $this->akte_kelahiran_path,
+                'filename' => basename(str_replace(['storage/', 'public/', 'api/secure-files/', 'siswa/dokumen/'], '', $this->akte_kelahiran_path)),
+                'url' => $this->akte_kelahiran_url,
+                'exists' => $this->akte_kelahiran_exists,
+                'route' => route('ambil.file.rahasia', ['filename' => basename(str_replace(['storage/', 'public/', 'api/secure-files/', 'siswa/dokumen/'], '', $this->akte_kelahiran_path))]),
+            ],
+            'kk' => [
+                'db_path' => $this->kartu_keluarga_path,
+                'filename' => basename(str_replace(['storage/', 'public/', 'api/secure-files/', 'siswa/dokumen/'], '', $this->kartu_keluarga_path)),
+                'url' => $this->kartu_keluarga_url,
+                'exists' => $this->kartu_keluarga_exists,
+                'route' => route('ambil.file.rahasia', ['filename' => basename(str_replace(['storage/', 'public/', 'api/secure-files/', 'siswa/dokumen/'], '', $this->kartu_keluarga_path))]),
+            ],
+            'kia' => [
+                'db_path' => $this->kia_path,
+                'filename' => basename(str_replace(['storage/', 'public/', 'api/secure-files/', 'siswa/dokumen/'], '', $this->kia_path)),
+                'url' => $this->kia_url,
+                'exists' => $this->kia_exists,
+                'route' => route('ambil.file.rahasia', ['filename' => basename(str_replace(['storage/', 'public/', 'api/secure-files/', 'siswa/dokumen/'], '', $this->kia_path))]),
+            ],
+            'bpjs' => [
+                'db_path' => $this->bpjs_path,
+                'filename' => basename(str_replace(['storage/', 'public/', 'api/secure-files/', 'siswa/dokumen/'], '', $this->bpjs_path)),
+                'url' => $this->bpjs_url,
+                'exists' => $this->bpjs_exists,
+                'route' => route('ambil.file.rahasia', ['filename' => basename(str_replace(['storage/', 'public/', 'api/secure-files/', 'siswa/dokumen/'], '', $this->bpjs_path))]),
+            ],
+        ];
+    }
+
+    /**
+     * Update semua path di database dari siswa/dokumen/ ke hanya filename
+     */
+    public static function migrateDatabasePaths()
+    {
+        \Log::info('Starting database path migration to filename only...');
+        
+        $updated = 0;
+        $siswas = self::all();
+        
+        foreach ($siswas as $siswa) {
+            $updatedFields = 0;
+            
+            $fields = ['akte_kelahiran_path', 'kartu_keluarga_path', 'kia_path', 'bpjs_path'];
+            
+            foreach ($fields as $field) {
+                $path = $siswa->$field;
+                
+                if ($path) {
+                    // Ekstrak hanya filename
+                    $filename = basename(str_replace(['storage/', 'public/', 'api/secure-files/', 'siswa/dokumen/'], '', $path));
+                    
+                    if ($filename !== $path) {
+                        $siswa->$field = $filename;
+                        $updatedFields++;
+                        
+                        \Log::info("Updated {$field} for siswa {$siswa->id}: {$path} → {$filename}");
+                    }
+                }
+            }
+            
+            if ($updatedFields > 0) {
+                $siswa->save();
+                $updated++;
+            }
+        }
+        
+        \Log::info("Database migration completed. Updated {$updated} records.");
+        return $updated;
+    }
+
+    // ============================
+    // SCOPE UNTUK PENCARIAN
+    // ============================
+
+    /**
+     * Scope untuk pencarian data terenkripsi
+     */
+    public function scopeSearchEncrypted(Builder $query, string $search, string $column)
+    {
+        return $query->where(function ($q) use ($search, $column) {
+            return $q;
+        });
+    }
+
+    /**
+     * Scope untuk pencarian global
+     */
+    public function scopeGlobalSearch(Builder $query, string $search): Builder
+    {
+        return $query->where(function ($q) use ($search) {
+            // Kolom yang tidak terenkripsi
+            $q->where('nama_lengkap', 'like', "%{$search}%")
+              ->orWhere('tempat_lahir', 'like', "%{$search}%")
+              ->orWhere('agama', 'like', "%{$search}%")
+              ->orWhere('jenis_kelamin', 'like', "%{$search}%")
+              ->orWhere('nama_ayah', 'like', "%{$search}%")
+              ->orWhere('nama_ibu', 'like', "%{$search}%")
+              ->orWhereHas('registPendaftar', function ($subQuery) use ($search) {
+                  $subQuery->where('username', 'like', "%{$search}%");
+              })
+              ->orWhereHas('tahunAjaran', function ($subQuery) use ($search) {
+                  $subQuery->where('nama_tahun_ajaran', 'like', "%{$search}%");
+              });
+        });
+    }
+
+    // ============================
+    // MUTATORS TAMBAHAN UNTUK FILE
+    // ============================
+
+    /**
+     * Mutator untuk otomatis convert path saat save
+     */
+    public function setAkteKelahiranPathAttribute($value)
+    {
+        $this->attributes['akte_kelahiran_path'] = $this->normalizeFilePath($value);
+    }
+
+    public function setKartuKeluargaPathAttribute($value)
+    {
+        $this->attributes['kartu_keluarga_path'] = $this->normalizeFilePath($value);
+    }
+
+    public function setKiaPathAttribute($value)
+    {
+        $this->attributes['kia_path'] = $this->normalizeFilePath($value);
+    }
+
+    public function setBpjsPathAttribute($value)
+    {
+        $this->attributes['bpjs_path'] = $this->normalizeFilePath($value);
+    }
+
+    /**
+     * Normalize file path ke hanya filename
+     */
+    private function normalizeFilePath($path)
+    {
+        if (!$path) {
+            return null;
+        }
+        
+        // Hapus semua prefix dan ambil hanya filename
+        $cleanPath = str_replace(['storage/', 'public/', 'api/secure-files/', 'siswa/dokumen/'], '', $path);
+        
+        return basename($cleanPath);
     }
 
     protected static function boot()
@@ -406,21 +621,105 @@ class SiswaPendaftar extends Model
             if (empty($model->status)) {
                 $model->status = 'menunggu';
             }
+            
+            // Auto-normalize file paths saat create
+            $model->normalizeAllFilePaths();
+        });
+        
+        static::updating(function ($model) {
+            // Auto-normalize file paths saat update
+            $model->normalizeAllFilePaths();
         });
     }
-
-    // Tambahkan di dalam class SiswaPendaftar:
-
-    public function siswa()
+    
+    /**
+     * Normalize semua file paths
+     */
+    private function normalizeAllFilePaths()
     {
-        return $this->hasOne(Siswa::class);
+        $fields = ['akte_kelahiran_path', 'kartu_keluarga_path', 'kia_path', 'bpjs_path'];
+        
+        foreach ($fields as $field) {
+            if (!empty($this->$field)) {
+                $this->$field = $this->normalizeFilePath($this->$field);
+            }
+        }
     }
 
-    // TAMBAHKAN RELASI INI - Relasi ke TahunAjaran
-    public function tahunAjaran()
+    // ============================
+    // METODE UNTUK API RESPONSE
+    // ============================
+
+    /**
+     * Format data untuk API response
+     */
+    public function toApiArray()
     {
-        return $this->belongsTo(TahunAjaran::class);
+        return [
+            'id' => $this->id,
+            'regist_pendaftar_id' => $this->regist_pendaftar_id,
+            'nama_lengkap' => $this->nama_lengkap,
+            'nik' => $this->nik_decrypted,
+            'tempat_lahir' => $this->tempat_lahir,
+            'tanggal_lahir' => $this->tanggal_lahir,
+            'formatted_tanggal_lahir' => $this->formatted_tanggal_lahir,
+            'agama' => $this->agama,
+            'jenis_kelamin' => $this->jenis_kelamin,
+            'usia' => $this->usia,
+            'alamat_jalan' => $this->alamat_jalan,
+            'rt' => $this->rt,
+            'rw' => $this->rw,
+            'kelurahan' => $this->kelurahan,
+            'kecamatan' => $this->kecamatan,
+            'kota' => $this->kota,
+            'kode_pos' => $this->kode_pos,
+            'tinggi_badan' => $this->tinggi_badan,
+            'berat_badan' => $this->berat_badan,
+            'jumlah_saudara' => $this->jumlah_saudara,
+            'jarak_sekolah' => (float)$this->jarak_sekolah,
+            'waktu_tempuh' => $this->waktu_tempuh,
+            
+            // Data Orang Tua
+            'nama_ayah' => $this->nama_ayah,
+            'nama_ibu' => $this->nama_ibu,
+            'nik_ayah' => $this->nik_ayah_decrypted,
+            'nik_ibu' => $this->nik_ibu_decrypted,
+            'tempat_lahir_ayah' => $this->tempat_lahir_ayah,
+            'tempat_lahir_ibu' => $this->tempat_lahir_ibu,
+            'tanggal_lahir_ayah' => $this->tanggal_lahir_ayah,
+            'tanggal_lahir_ibu' => $this->tanggal_lahir_ibu,
+            'pendidikan_ayah' => $this->pendidikan_ayah,
+            'pendidikan_ibu' => $this->pendidikan_ibu,
+            'pekerjaan_ayah' => $this->pekerjaan_ayah,
+            'pekerjaan_ibu' => $this->pekerjaan_ibu,
+            'alamat_ayah' => $this->alamat_ayah,
+            'alamat_ibu' => $this->alamat_ibu,
+            'no_telp' => $this->no_telp_decrypted,
+            'penghasilan' => (float)$this->penghasilan_decrypted,
+            'formatted_penghasilan' => $this->formatted_penghasilan,
+            
+            // Dokumen dengan URL route proxy
+            'akte_kelahiran' => $this->akte_kelahiran_url,
+            'akte_kelahiran_url' => $this->akte_kelahiran_url,
+            'akte_kelahiran_exists' => $this->akte_kelahiran_exists,
+            'kartu_keluarga' => $this->kartu_keluarga_url,
+            'kartu_keluarga_url' => $this->kartu_keluarga_url,
+            'kartu_keluarga_exists' => $this->kartu_keluarga_exists,
+            'kia' => $this->kia_url,
+            'kia_url' => $this->kia_url,
+            'kia_exists' => $this->kia_exists,
+            'bpjs' => $this->bpjs_url,
+            'bpjs_url' => $this->bpjs_url,
+            'bpjs_exists' => $this->bpjs_exists,
+            
+            // Status
+            'status' => $this->status,
+            'status_text' => $this->status_text,
+            'status_color' => $this->status_color,
+            'catatan_admin' => $this->catatan_admin,
+            
+            'created_at' => $this->created_at->format('d/m/Y H:i'),
+            'updated_at' => $this->updated_at->format('d/m/Y H:i'),
+        ];
     }
-
-
 }

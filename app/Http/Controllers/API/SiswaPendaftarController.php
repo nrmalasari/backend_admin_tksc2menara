@@ -10,7 +10,8 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str; // TAMBAHKAN INI
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Route;
 
 class SiswaPendaftarController extends Controller
 {
@@ -43,6 +44,55 @@ class SiswaPendaftarController extends Controller
     }
 
     /**
+     * Simpan file ke disk 'rahasia'
+     */
+    private function saveFile($file, $type)
+    {
+        if (!$file) {
+            return null;
+        }
+        
+        // Generate nama file unik
+        $filename = $type . '_' . time() . '_' . Str::random(10) . '.' . $file->getClientOriginalExtension();
+        
+        // Simpan ke storage/app/secure-files (disk 'rahasia')
+        $path = $file->storeAs('', $filename, 'rahasia');
+        
+        Log::info('File saved to secure storage:', [
+            'type' => $type,
+            'filename' => $filename,
+            'path' => $path,
+            'disk' => 'rahasia'
+        ]);
+        
+        return $filename; // Hanya return nama file, karena sudah ada di secure-files
+    }
+
+    /**
+     * Mendapatkan URL untuk file dokumen (GANTI INI!)
+     */
+    private function getFileUrl($filename)
+    {
+        if (!$filename) {
+            return null;
+        }
+        
+        try {
+            // Gunakan route proxy untuk semua akses file
+            $url = route('ambil.file.rahasia', ['filename' => $filename]);
+            Log::info('Generated route proxy URL: ' . $url);
+            return $url;
+        } catch (\Exception $e) {
+            Log::error('Failed to generate route URL: ' . $e->getMessage());
+            
+            // Fallback ke URL langsung jika route tidak ada
+            $fallbackUrl = url('/lihat-file/' . $filename);
+            Log::info('Using fallback URL: ' . $fallbackUrl);
+            return $fallbackUrl;
+        }
+    }
+
+    /**
      * Mendapatkan semua data siswa pendaftar user
      */
     public function index(Request $request)
@@ -67,6 +117,23 @@ class SiswaPendaftarController extends Controller
                     'message' => 'Data formulir pendaftaran belum ada'
                 ], 404);
             }
+            
+            // Generate URL menggunakan route proxy /lihat-file/{filename}
+            $akteUrl = $siswaPendaftar->akte_kelahiran_path 
+                ? $this->getFileUrl($siswaPendaftar->akte_kelahiran_path)
+                : null;
+                
+            $kkUrl = $siswaPendaftar->kartu_keluarga_path 
+                ? $this->getFileUrl($siswaPendaftar->kartu_keluarga_path)
+                : null;
+                
+            $kiaUrl = $siswaPendaftar->kia_path 
+                ? $this->getFileUrl($siswaPendaftar->kia_path)
+                : null;
+                
+            $bpjsUrl = $siswaPendaftar->bpjs_path 
+                ? $this->getFileUrl($siswaPendaftar->bpjs_path)
+                : null;
             
             $data = [
                 'id' => $siswaPendaftar->id,
@@ -113,14 +180,18 @@ class SiswaPendaftarController extends Controller
                 'penghasilan' => (float)$siswaPendaftar->penghasilan_decrypted,
                 'formatted_penghasilan' => $siswaPendaftar->formatted_penghasilan,
                 
-                // Dokumen dengan URL yang benar
-                'akte_kelahiran' => $siswaPendaftar->akte_kelahiran_url,
+                // Dokumen dengan URL route proxy /lihat-file/{filename}
+                'akte_kelahiran' => $akteUrl,
+                'akte_kelahiran_url' => $akteUrl,
                 'akte_kelahiran_exists' => $siswaPendaftar->akte_kelahiran_exists,
-                'kartu_keluarga' => $siswaPendaftar->kartu_keluarga_url,
+                'kartu_keluarga' => $kkUrl,
+                'kartu_keluarga_url' => $kkUrl,
                 'kartu_keluarga_exists' => $siswaPendaftar->kartu_keluarga_exists,
-                'kia' => $siswaPendaftar->kia_url,
+                'kia' => $kiaUrl,
+                'kia_url' => $kiaUrl,
                 'kia_exists' => $siswaPendaftar->kia_exists,
-                'bpjs' => $siswaPendaftar->bpjs_url,
+                'bpjs' => $bpjsUrl,
+                'bpjs_url' => $bpjsUrl,
                 'bpjs_exists' => $siswaPendaftar->bpjs_exists,
                 
                 // Status
@@ -171,6 +242,16 @@ class SiswaPendaftarController extends Controller
         // Cek apakah user sudah memiliki data pendaftaran
         $existingData = SiswaPendaftar::where('regist_pendaftar_id', $userId)->first();
         if ($existingData) {
+            // Jika sudah ada data dan status ditolak/revisi, arahkan untuk update
+            if ($existingData->status === 'ditolak' || $existingData->status === 'revisi') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Anda sudah memiliki formulir yang perlu diperbaiki. Silakan edit data yang sudah ada.',
+                    'requires_update' => true,
+                    'existing_id' => $existingData->id
+                ], 400);
+            }
+            
             return response()->json([
                 'success' => false,
                 'message' => 'Anda sudah mengisi formulir pendaftaran. Silakan edit data yang sudah ada.'
@@ -248,31 +329,17 @@ class SiswaPendaftarController extends Controller
             
             Log::info('User ditemukan:', ['user' => $user->username]);
             
-            // Upload file dengan cara yang sama seperti pembayaran
-            $uploadFiles = function($file, $type) {
-                if ($file) {
-                    // Generate nama file unik seperti di pembayaran
-                    $filename = $type . '_' . time() . '_' . Str::random(10) . '.' . $file->getClientOriginalExtension();
-                    
-                    // Simpan ke storage
-                    $path = $file->storeAs('siswa/dokumen', $filename, 'public');
-                    
-                    // Simpan path lengkap ke database
-                    return 'siswa/dokumen/' . $filename;
-                }
-                return null;
-            };
+            // Upload file ke disk 'rahasia'
+            $akteFilename = $this->saveFile($request->file('akte_kelahiran'), 'akte');
+            $kkFilename = $this->saveFile($request->file('kartu_keluarga'), 'kk');
+            $kiaFilename = $this->saveFile($request->file('kia'), 'kia');
+            $bpjsFilename = $this->saveFile($request->file('bpjs'), 'bpjs');
             
-            $aktePath = $uploadFiles($request->file('akte_kelahiran'), 'akte');
-            $kkPath = $uploadFiles($request->file('kartu_keluarga'), 'kk');
-            $kiaPath = $uploadFiles($request->file('kia'), 'kia');
-            $bpjsPath = $uploadFiles($request->file('bpjs'), 'bpjs');
-            
-            Log::info('Files uploaded:', [
-                'akte' => $aktePath,
-                'kk' => $kkPath,
-                'kia' => $kiaPath,
-                'bpjs' => $bpjsPath
+            Log::info('Files uploaded to secure storage:', [
+                'akte' => $akteFilename,
+                'kk' => $kkFilename,
+                'kia' => $kiaFilename,
+                'bpjs' => $bpjsFilename
             ]);
             
             // Data untuk disimpan
@@ -318,11 +385,11 @@ class SiswaPendaftarController extends Controller
                 'no_telp' => $request->input('no_telp'),
                 'penghasilan' => (float)$request->input('penghasilan'),
                 
-                // File paths
-                'akte_kelahiran_path' => $aktePath,
-                'kartu_keluarga_path' => $kkPath,
-                'kia_path' => $kiaPath,
-                'bpjs_path' => $bpjsPath,
+                // File paths - hanya nama file (disk 'rahasia')
+                'akte_kelahiran_path' => $akteFilename,
+                'kartu_keluarga_path' => $kkFilename,
+                'kia_path' => $kiaFilename,
+                'bpjs_path' => $bpjsFilename,
                 
                 // Status default
                 'status' => 'menunggu',
@@ -336,6 +403,12 @@ class SiswaPendaftarController extends Controller
             
             DB::commit();
             
+            // Generate URL menggunakan route proxy /lihat-file/{filename}
+            $akteUrl = $akteFilename ? $this->getFileUrl($akteFilename) : null;
+            $kkUrl = $kkFilename ? $this->getFileUrl($kkFilename) : null;
+            $kiaUrl = $kiaFilename ? $this->getFileUrl($kiaFilename) : null;
+            $bpjsUrl = $bpjsFilename ? $this->getFileUrl($bpjsFilename) : null;
+            
             return response()->json([
                 'success' => true,
                 'data' => [
@@ -343,10 +416,10 @@ class SiswaPendaftarController extends Controller
                     'nama_lengkap' => $siswaPendaftar->nama_lengkap,
                     'status' => $siswaPendaftar->status,
                     'status_text' => $siswaPendaftar->status_text,
-                    'akte_kelahiran' => $siswaPendaftar->akte_kelahiran_url,
-                    'kartu_keluarga' => $siswaPendaftar->kartu_keluarga_url,
-                    'kia' => $siswaPendaftar->kia_url,
-                    'bpjs' => $siswaPendaftar->bpjs_url,
+                    'akte_kelahiran' => $akteUrl,
+                    'kartu_keluarga' => $kkUrl,
+                    'kia' => $kiaUrl,
+                    'bpjs' => $bpjsUrl,
                     'created_at' => $siswaPendaftar->created_at->format('d/m/Y H:i'),
                 ],
                 'message' => 'Formulir pendaftaran berhasil disimpan. Silakan tunggu verifikasi dari admin.'
@@ -399,11 +472,12 @@ class SiswaPendaftarController extends Controller
             ], 404);
         }
         
-        // Hanya bisa update jika status masih menunggu
-        if ($siswaPendaftar->status !== 'menunggu') {
+        // Boleh update jika status menunggu, ditolak, atau revisi
+        $allowedStatuses = ['menunggu', 'ditolak', 'revisi'];
+        if (!in_array($siswaPendaftar->status, $allowedStatuses)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Formulir tidak dapat diubah karena sudah diproses'
+                'message' => 'Formulir tidak dapat diubah karena sudah diproses atau diverifikasi'
             ], 400);
         }
         
@@ -453,6 +527,9 @@ class SiswaPendaftarController extends Controller
             'kartu_keluarga' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:2048',
             'kia' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:2048',
             'bpjs' => 'nullable|file|mimes:jpg,jpeg,png,pdf|max:2048',
+            
+            // Parameter khusus untuk reset status (dari frontend)
+            'reset_status' => 'nullable|boolean',
         ]);
         
         if ($validator->fails()) {
@@ -507,6 +584,14 @@ class SiswaPendaftarController extends Controller
                 'penghasilan' => (float)$request->input('penghasilan'),
             ];
             
+            // Reset status ke "menunggu" jika formulir ditolak/revisi
+            $isCorrection = ($siswaPendaftar->status === 'ditolak' || $siswaPendaftar->status === 'revisi');
+            if ($isCorrection && ($request->has('reset_status') || !$request->has('reset_status'))) {
+                $updateData['status'] = 'menunggu';
+                $updateData['catatan_admin'] = null;
+                Log::info('Reset status to "menunggu" for correction from status:', ['old_status' => $siswaPendaftar->status]);
+            }
+            
             // Handle file upload jika ada
             $fileFields = [
                 'akte_kelahiran' => 'akte_kelahiran_path',
@@ -521,31 +606,14 @@ class SiswaPendaftarController extends Controller
                     
                     // Hapus file lama jika ada
                     if ($siswaPendaftar->$dbField) {
-                        // Hapus path relatif dari storage
-                        $cleanPath = $siswaPendaftar->$dbField;
-                        if (strpos($cleanPath, 'storage/') === 0) {
-                            $cleanPath = substr($cleanPath, 8);
-                        }
-                        if (strpos($cleanPath, 'public/') === 0) {
-                            $cleanPath = substr($cleanPath, 7);
-                        }
-                        
-                        Storage::disk('public')->delete($cleanPath);
-                        Log::info('Deleted old file:', ['path' => $cleanPath]);
+                        Storage::disk('rahasia')->delete($siswaPendaftar->$dbField);
+                        Log::info('Deleted old file:', ['path' => $siswaPendaftar->$dbField, 'disk' => 'rahasia']);
                     }
                     
                     $file = $request->file($requestField);
+                    $updateData[$dbField] = $this->saveFile($file, $requestField);
                     
-                    // Generate nama file unik seperti di pembayaran
-                    $filename = $requestField . '_' . time() . '_' . Str::random(10) . '.' . $file->getClientOriginalExtension();
-                    
-                    // Simpan ke storage
-                    $path = $file->storeAs('siswa/dokumen', $filename, 'public');
-                    
-                    // Simpan path lengkap ke database
-                    $updateData[$dbField] = 'siswa/dokumen/' . $filename;
-                    
-                    Log::info('New file uploaded:', ['path' => $path, 'db_value' => $updateData[$dbField]]);
+                    Log::info('New file uploaded:', ['path' => $updateData[$dbField], 'disk' => 'rahasia']);
                 }
             }
             
@@ -555,6 +623,28 @@ class SiswaPendaftarController extends Controller
             
             DB::commit();
             
+            $message = 'Formulir berhasil diperbarui';
+            if ($isCorrection) {
+                $message = 'Formulir berhasil diperbaiki dan status diubah menjadi "Menunggu Verifikasi"';
+            }
+            
+            // Generate URL menggunakan route proxy /lihat-file/{filename}
+            $akteUrl = $siswaPendaftar->akte_kelahiran_path 
+                ? $this->getFileUrl($siswaPendaftar->akte_kelahiran_path)
+                : null;
+                
+            $kkUrl = $siswaPendaftar->kartu_keluarga_path 
+                ? $this->getFileUrl($siswaPendaftar->kartu_keluarga_path)
+                : null;
+                
+            $kiaUrl = $siswaPendaftar->kia_path 
+                ? $this->getFileUrl($siswaPendaftar->kia_path)
+                : null;
+                
+            $bpjsUrl = $siswaPendaftar->bpjs_path 
+                ? $this->getFileUrl($siswaPendaftar->bpjs_path)
+                : null;
+            
             return response()->json([
                 'success' => true,
                 'data' => [
@@ -562,13 +652,14 @@ class SiswaPendaftarController extends Controller
                     'nama_lengkap' => $siswaPendaftar->nama_lengkap,
                     'status' => $siswaPendaftar->status,
                     'status_text' => $siswaPendaftar->status_text,
-                    'akte_kelahiran' => $siswaPendaftar->akte_kelahiran_url,
-                    'kartu_keluarga' => $siswaPendaftar->kartu_keluarga_url,
-                    'kia' => $siswaPendaftar->kia_url,
-                    'bpjs' => $siswaPendaftar->bpjs_url,
+                    'akte_kelahiran' => $akteUrl,
+                    'kartu_keluarga' => $kkUrl,
+                    'kia' => $kiaUrl,
+                    'bpjs' => $bpjsUrl,
+                    'catatan_admin' => $siswaPendaftar->catatan_admin,
                     'updated_at' => $siswaPendaftar->updated_at->format('d/m/Y H:i'),
                 ],
-                'message' => 'Formulir berhasil diperbarui'
+                'message' => $message
             ]);
             
         } catch (\Exception $e) {
@@ -608,17 +699,18 @@ class SiswaPendaftarController extends Controller
             ], 404);
         }
         
-        // Hanya bisa hapus jika status masih menunggu
-        if ($siswaPendaftar->status !== 'menunggu') {
+        // Boleh hapus jika status masih menunggu, ditolak, atau revisi
+        $allowedStatuses = ['menunggu', 'ditolak', 'revisi'];
+        if (!in_array($siswaPendaftar->status, $allowedStatuses)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Formulir tidak dapat dihapus karena sudah diproses'
+                'message' => 'Formulir tidak dapat dihapus karena sudah diproses atau diverifikasi'
             ], 400);
         }
         
         DB::beginTransaction();
         try {
-            // Hapus file-file dokumen
+            // Hapus file-file dokumen dari disk 'rahasia'
             $fileFields = [
                 'akte_kelahiran_path',
                 'kartu_keluarga_path', 
@@ -628,17 +720,8 @@ class SiswaPendaftarController extends Controller
             
             foreach ($fileFields as $field) {
                 if ($siswaPendaftar->$field) {
-                    // Hapus path relatif dari storage
-                    $cleanPath = $siswaPendaftar->$field;
-                    if (strpos($cleanPath, 'storage/') === 0) {
-                        $cleanPath = substr($cleanPath, 8);
-                    }
-                    if (strpos($cleanPath, 'public/') === 0) {
-                        $cleanPath = substr($cleanPath, 7);
-                    }
-                    
-                    Storage::disk('public')->delete($cleanPath);
-                    Log::info('Deleted file:', ['field' => $field, 'path' => $cleanPath]);
+                    Storage::disk('rahasia')->delete($siswaPendaftar->$field);
+                    Log::info('Deleted file from secure storage:', ['field' => $field, 'path' => $siswaPendaftar->$field]);
                 }
             }
             
@@ -674,18 +757,42 @@ class SiswaPendaftarController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->get()
                 ->map(function ($siswa) {
+                    // Generate URLs menggunakan route proxy
+                    $akteUrl = $siswa->akte_kelahiran_path 
+                        ? route('ambil.file.rahasia', ['filename' => $siswa->akte_kelahiran_path])
+                        : null;
+                        
+                    $kkUrl = $siswa->kartu_keluarga_path 
+                        ? route('ambil.file.rahasia', ['filename' => $siswa->kartu_keluarga_path])
+                        : null;
+                        
+                    $kiaUrl = $siswa->kia_path 
+                        ? route('ambil.file.rahasia', ['filename' => $siswa->kia_path])
+                        : null;
+                        
+                    $bpjsUrl = $siswa->bpjs_path 
+                        ? route('ambil.file.rahasia', ['filename' => $siswa->bpjs_path])
+                        : null;
+                    
                     return [
                         'id' => $siswa->id,
                         'username' => $siswa->registPendaftar?->username,
                         'nama_lengkap' => $siswa->nama_lengkap,
                         'nik' => $siswa->nik_decrypted,
                         'akte_raw' => $siswa->akte_kelahiran_path,
-                        'akte_url' => $siswa->akte_kelahiran_url,
+                        'akte_url' => $akteUrl,
                         'akte_exists' => $siswa->akte_kelahiran_exists,
                         'kk_raw' => $siswa->kartu_keluarga_path,
-                        'kk_url' => $siswa->kartu_keluarga_url,
+                        'kk_url' => $kkUrl,
                         'kk_exists' => $siswa->kartu_keluarga_exists,
+                        'kia_raw' => $siswa->kia_path,
+                        'kia_url' => $kiaUrl,
+                        'kia_exists' => $siswa->kia_exists,
+                        'bpjs_raw' => $siswa->bpjs_path,
+                        'bpjs_url' => $bpjsUrl,
+                        'bpjs_exists' => $siswa->bpjs_exists,
                         'status' => $siswa->status,
+                        'catatan_admin' => $siswa->catatan_admin,
                         'created_at' => $siswa->created_at->format('d/m/Y H:i'),
                     ];
                 });
@@ -720,6 +827,22 @@ class SiswaPendaftarController extends Controller
                 ], 404);
             }
             
+            $akteUrl = $siswa->akte_kelahiran_path 
+                ? route('ambil.file.rahasia', ['filename' => $siswa->akte_kelahiran_path])
+                : null;
+                
+            $kkUrl = $siswa->kartu_keluarga_path 
+                ? route('ambil.file.rahasia', ['filename' => $siswa->kartu_keluarga_path])
+                : null;
+                
+            $kiaUrl = $siswa->kia_path 
+                ? route('ambil.file.rahasia', ['filename' => $siswa->kia_path])
+                : null;
+                
+            $bpjsUrl = $siswa->bpjs_path 
+                ? route('ambil.file.rahasia', ['filename' => $siswa->bpjs_path])
+                : null;
+            
             return response()->json([
                 'success' => true,
                 'data' => [
@@ -728,25 +851,27 @@ class SiswaPendaftarController extends Controller
                     
                     // Akte Kelahiran
                     'akte_database' => $siswa->akte_kelahiran_path,
-                    'akte_url' => $siswa->akte_kelahiran_url,
+                    'akte_url' => $akteUrl,
                     'akte_exists' => $siswa->akte_kelahiran_exists,
+                    'storage_path' => storage_path('app/secure-files/' . $siswa->akte_kelahiran_path),
+                    'web_url' => $akteUrl,
                     
                     // Kartu Keluarga
                     'kk_database' => $siswa->kartu_keluarga_path,
-                    'kk_url' => $siswa->kartu_keluarga_url,
+                    'kk_url' => $kkUrl,
                     'kk_exists' => $siswa->kartu_keluarga_exists,
                     
                     // KIA
                     'kia_database' => $siswa->kia_path,
-                    'kia_url' => $siswa->kia_url,
+                    'kia_url' => $kiaUrl,
                     'kia_exists' => $siswa->kia_exists,
                     
                     // BPJS
                     'bpjs_database' => $siswa->bpjs_path,
-                    'bpjs_url' => $siswa->bpjs_url,
+                    'bpjs_url' => $bpjsUrl,
                     'bpjs_exists' => $siswa->bpjs_exists,
                     
-                    'storage_files' => Storage::disk('public')->files('siswa/dokumen'),
+                    'storage_files' => Storage::disk('rahasia')->files(''),
                 ],
                 'message' => 'File check completed'
             ]);
@@ -771,17 +896,35 @@ class SiswaPendaftarController extends Controller
                 ->take(10)
                 ->get()
                 ->map(function ($siswa) {
+                    // Generate URLs untuk test
+                    $akteUrl = $siswa->akte_kelahiran_path 
+                        ? route('ambil.file.rahasia', ['filename' => $siswa->akte_kelahiran_path])
+                        : null;
+                        
+                    $kkUrl = $siswa->kartu_keluarga_path 
+                        ? route('ambil.file.rahasia', ['filename' => $siswa->kartu_keluarga_path])
+                        : null;
+                        
+                    $kiaUrl = $siswa->kia_path 
+                        ? route('ambil.file.rahasia', ['filename' => $siswa->kia_path])
+                        : null;
+                        
+                    $bpjsUrl = $siswa->bpjs_path 
+                        ? route('ambil.file.rahasia', ['filename' => $siswa->bpjs_path])
+                        : null;
+                    
                     return [
                         'id' => $siswa->id,
                         'regist_pendaftar_id' => $siswa->regist_pendaftar_id,
                         'nama_lengkap' => $siswa->nama_lengkap,
                         'nik' => $siswa->nik_decrypted,
-                        'akte_kelahiran' => $siswa->akte_kelahiran_url,
-                        'kartu_keluarga' => $siswa->kartu_keluarga_url,
-                        'kia' => $siswa->kia_url,
-                        'bpjs' => $siswa->bpjs_url,
+                        'akte_kelahiran' => $akteUrl,
+                        'kartu_keluarga' => $kkUrl,
+                        'kia' => $kiaUrl,
+                        'bpjs' => $bpjsUrl,
                         'status' => $siswa->status,
                         'status_text' => $siswa->status_text,
+                        'catatan_admin' => $siswa->catatan_admin,
                         'created_at' => $siswa->created_at->format('d/m/Y H:i'),
                     ];
                 });
@@ -874,8 +1017,8 @@ class SiswaPendaftarController extends Controller
                 'success' => true,
                 'data' => [
                     'id' => $siswaPendaftar->id,
-                    'akte_kelahiran' => $siswaPendaftar->akte_kelahiran_url,
-                    'kartu_keluarga' => $siswaPendaftar->kartu_keluarga_url,
+                    'akte_kelahiran' => null, // Tidak ada file untuk test
+                    'kartu_keluarga' => null,
                 ],
                 'message' => 'Formulir test berhasil disimpan'
             ], 201);
@@ -885,6 +1028,75 @@ class SiswaPendaftarController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Gagal menyimpan formulir test: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Migrate file dari siswa/dokumen/ ke secure-files/
+     */
+    public function migrateFiles(Request $request)
+    {
+        try {
+            Log::info('=== MIGRATE FILES METHOD CALLED ===');
+            
+            $siswaPendaftars = SiswaPendaftar::all();
+            $migratedCount = 0;
+            
+            foreach ($siswaPendaftars as $siswa) {
+                $fileFields = [
+                    'akte_kelahiran_path',
+                    'kartu_keluarga_path',
+                    'kia_path',
+                    'bpjs_path',
+                ];
+                
+                $updated = false;
+                
+                foreach ($fileFields as $field) {
+                    $oldPath = $siswa->$field;
+                    
+                    // Cek jika path mengandung siswa/dokumen/ atau public/
+                    if ($oldPath && (strpos($oldPath, 'siswa/dokumen/') !== false || strpos($oldPath, 'public/') !== false)) {
+                        $filename = basename($oldPath);
+                        
+                        // Cek jika file ada di lokasi lama (public disk)
+                        $oldCleanPath = str_replace(['storage/', 'public/'], '', $oldPath);
+                        
+                        if (Storage::disk('public')->exists($oldCleanPath)) {
+                            // Pindahkan file dari public ke rahasia
+                            $fileContent = Storage::disk('public')->get($oldCleanPath);
+                            Storage::disk('rahasia')->put($filename, $fileContent);
+                            
+                            // Hapus file lama dari public
+                            Storage::disk('public')->delete($oldCleanPath);
+                            
+                            Log::info("Migrated file: {$oldPath} → secure-files/{$filename}");
+                        }
+                        
+                        // Update path di database (hanya nama file)
+                        $siswa->$field = $filename;
+                        $updated = true;
+                    }
+                }
+                
+                if ($updated) {
+                    $siswa->save();
+                    $migratedCount++;
+                }
+            }
+            
+            return response()->json([
+                'success' => true,
+                'message' => "Migrasi selesai. {$migratedCount} data diperbarui.",
+                'migrated_count' => $migratedCount
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Migrate files error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Gagal memigrasi file: ' . $e->getMessage()
             ], 500);
         }
     }

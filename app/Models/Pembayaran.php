@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Database\Eloquent\Builder;
 
 class Pembayaran extends Model
 {
@@ -20,7 +21,7 @@ class Pembayaran extends Model
         'no_rek',
         'metode_pembayaran',
         'jumlah_pembayaran',
-        'jenis_pembayaran', // TAMBAHKAN INI
+        'jenis_pembayaran',
         'bukti_pembayaran',
         'catatan_admin',
         'status_pembayaran'
@@ -197,7 +198,6 @@ class Pembayaran extends Model
      */
     public function getFormattedJumlahAttribute()
     {
-        // Tampilkan jumlah untuk SEMUA metode, termasuk manual
         return 'Rp ' . number_format($this->jumlah_pembayaran, 0, ',', '.');
     }
 
@@ -240,6 +240,21 @@ class Pembayaran extends Model
     }
 
     /**
+     * Scope untuk search no_rek yang sudah di-decrypt
+     */
+    public function scopeSearchNoRekDecrypted(Builder $query, string $search): Builder
+    {
+        // Karena no_rek di database dienkripsi, kita perlu mencari dengan cara lain
+        // Atau tidak support search untuk field terenkripsi
+        
+        // Untuk sementara, return query asli tanpa filter
+        return $query;
+        
+        // Alternatif: Jika ingin tetap search, simpan hash atau partial data terenkripsi
+        // Tapi ini tidak aman. Rekomendasi: jangan search no_rek terenkripsi
+    }
+
+    /**
      * Boot method untuk set default
      */
     protected static function boot()
@@ -251,17 +266,13 @@ class Pembayaran extends Model
                 $model->status_pembayaran = 'menunggu';
             }
             
-            // Untuk metode manual, set default values tapi JANGAN override jumlah_pembayaran
             if ($model->metode_pembayaran === 'manual') {
-                // Hanya set jika belum ada nilai
                 if (empty($model->nama_bank)) {
                     $model->nama_bank = 'Pembayaran di Kantor';
                 }
                 if (empty($model->no_rek)) {
                     $model->no_rek = '';
                 }
-                // JANGAN set jumlah_pembayaran = 0!
-                // Biarkan nilai dari input user
             }
             
             if (empty($model->tanggal_pembayaran)) {
@@ -270,17 +281,13 @@ class Pembayaran extends Model
         });
         
         static::updating(function ($model) {
-            // Untuk metode manual, set default values jika kosong
             if ($model->metode_pembayaran === 'manual') {
-                // Hanya set jika belum ada nilai
                 if (empty($model->nama_bank) || $model->nama_bank !== 'Pembayaran di Kantor') {
                     $model->nama_bank = 'Pembayaran di Kantor';
                 }
                 if (!empty($model->no_rek)) {
                     $model->no_rek = '';
                 }
-                // JANGAN set jumlah_pembayaran = 0!
-                // Biarkan nilai dari input user
             }
         });
     }

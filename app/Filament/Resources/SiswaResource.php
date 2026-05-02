@@ -101,8 +101,16 @@ class SiswaResource extends Resource
                             ->searchable()
                             ->preload()
                             ->required()
-                            ->helperText('Otomatis terisi jika memilih dari data pendaftar')
-                            ->disabled(fn (callable $get) => !empty($get('siswa_pendaftar_id'))),
+                            ->helperText(function (callable $get) {
+                                $pendaftarId = $get('siswa_pendaftar_id');
+                                if ($pendaftarId) {
+                                    $pendaftar = SiswaPendaftar::find($pendaftarId);
+                                    if ($pendaftar && $pendaftar->tahunAjaran) {
+                                        return 'Otomatis terisi dari data pendaftar. Anda bisa mengubah jika diperlukan.';
+                                    }
+                                }
+                                return 'Pilih tahun ajaran untuk siswa';
+                            }),
                         
                         Forms\Components\Select::make('kelas_id')
                             ->label('Kelas')
@@ -151,7 +159,29 @@ class SiswaResource extends Resource
                                     ->label('Tanggal Masuk')
                                     ->default(now())
                                     ->required()
-                                    ->live(),
+                                    ->live()
+                                    ->afterStateUpdated(function ($state, callable $set, callable $get) {
+                                        // Auto-generate NIS jika tanggal masuk diubah
+                                        if ($state && empty($get('nis'))) {
+                                            $date = Carbon::parse($state);
+                                            $year = $date->format('Y');
+                                            $month = $date->format('m');
+                                            
+                                            $urutan = 1;
+                                            if ($tahunAjaranId = $get('tahun_ajaran_id')) {
+                                                $totalSiswaTahunAjaran = Siswa::where('tahun_ajaran_id', $tahunAjaranId)->count();
+                                                $urutan = $totalSiswaTahunAjaran + 1;
+                                            } else {
+                                                $startDate = $date->copy()->startOfMonth();
+                                                $endDate = $date->copy()->endOfMonth();
+                                                $totalSiswaSameMonth = Siswa::whereBetween('tanggal_masuk', [$startDate, $endDate])->count();
+                                                $urutan = $totalSiswaSameMonth + 1;
+                                            }
+                                            
+                                            $urutanFormatted = str_pad($urutan, 3, '0', STR_PAD_LEFT);
+                                            $set('nis', $urutanFormatted . $month . $year);
+                                        }
+                                    }),
                                 
                                 Forms\Components\DatePicker::make('tanggal_keluar')
                                     ->label('Tanggal Keluar')
@@ -207,10 +237,10 @@ class SiswaResource extends Resource
                                 return $path;
                             }),
                         
-                        // Formulir akan otomatis diambil dari pendaftar, tetapi bisa di-upload manual jika diperlukan
+                        // Formulir hanya ditampilkan jika siswa didaftarkan manual
                         Forms\Components\FileUpload::make('formulir_path')
-                            ->label('Formulir Pendaftaran (Opsional)')
-                            ->helperText('Formulir akan otomatis diambil dari data pendaftar. Upload manual hanya jika diperlukan.')
+                            ->label('Formulir Pendaftaran')
+                            ->helperText('Hanya untuk siswa yang didaftarkan manual. Untuk siswa dari pendaftaran, dokumen sudah ada di sistem.')
                             ->directory('siswa/formulir')
                             ->disk('public')
                             ->acceptedFileTypes(['application/pdf', 'image/jpeg', 'image/png', 'image/jpg'])
@@ -230,25 +260,24 @@ class SiswaResource extends Resource
                             ->uploadButtonPosition('left')
                             ->uploadProgressIndicatorPosition('left')
                             ->dehydrated(true)
-                            ->hidden(fn (callable $get) => !empty($get('siswa_pendaftar_id')))
+                            ->visible(fn (callable $get) => empty($get('siswa_pendaftar_id')))
                             ->saveUploadedFileUsing(function (TemporaryUploadedFile $file) {
                                 $filename = 'formulir_' . time() . '_' . Str::random(10) . '.' . $file->getClientOriginalExtension();
                                 $path = $file->storeAs('siswa/formulir', $filename, 'public');
                                 return $path;
                             }),
-                    ])->columns(2)
-                    ->hidden(fn (callable $get) => !empty($get('siswa_pendaftar_id')) && empty($get('formulir_path'))),
+                    ])->columns(2),
                 
                 // Section untuk menampilkan informasi lengkap dari siswa pendaftar yang dipilih
-                Forms\Components\Section::make('Informasi Siswa dari Formulir')
+                Forms\Components\Section::make('Informasi Siswa dari Formulir Pendaftaran')
                     ->schema([
                         Forms\Components\Grid::make(3)
                             ->schema([
-                                // Data Pribadi
+                                // Data Pribadi Siswa
                                 Forms\Components\Group::make()
                                     ->schema([
                                         Forms\Components\Placeholder::make('data_pribadi_title')
-                                            ->label('DATA PRIBADI')
+                                            ->label('DATA PRIBADI SISWA')
                                             ->content('')
                                             ->extraAttributes(['class' => 'font-bold text-gray-800 text-sm uppercase']),
                                         
@@ -277,7 +306,7 @@ class SiswaResource extends Resource
                                             ->extraAttributes(['class' => 'text-sm']),
                                         
                                         Forms\Components\Placeholder::make('tempat_tanggal_lahir')
-                                            ->label('TTL')
+                                            ->label('Tempat, Tanggal Lahir')
                                             ->content(function (callable $get) {
                                                 $pendaftarId = $get('siswa_pendaftar_id');
                                                 if ($pendaftarId) {
@@ -308,15 +337,56 @@ class SiswaResource extends Resource
                                             })
                                             ->extraAttributes(['class' => 'text-sm']),
                                         
-                                        Forms\Components\Placeholder::make('tahun_ajaran_info')
-                                            ->label('Tahun Ajaran (Pendaftaran)')
+                                        Forms\Components\Placeholder::make('agama')
+                                            ->label('Agama')
                                             ->content(function (callable $get) {
                                                 $pendaftarId = $get('siswa_pendaftar_id');
                                                 if ($pendaftarId) {
                                                     $pendaftar = SiswaPendaftar::find($pendaftarId);
-                                                    if ($pendaftar && $pendaftar->tahunAjaran) {
-                                                        return $pendaftar->tahunAjaran->nama_tahun_ajaran ?? '-';
+                                                    if ($pendaftar) {
+                                                        $agama = strtolower($pendaftar->agama ?? '');
+                                                        return ucfirst($agama);
                                                     }
+                                                }
+                                                return '-';
+                                            })
+                                            ->extraAttributes(['class' => 'text-sm']),
+                                        
+                                        Forms\Components\Placeholder::make('usia')
+                                            ->label('Usia')
+                                            ->content(function (callable $get) {
+                                                $pendaftarId = $get('siswa_pendaftar_id');
+                                                if ($pendaftarId) {
+                                                    $pendaftar = SiswaPendaftar::find($pendaftarId);
+                                                    return $pendaftar->usia ? $pendaftar->usia . ' tahun' : '-';
+                                                }
+                                                return '-';
+                                            })
+                                            ->extraAttributes(['class' => 'text-sm']),
+                                        
+                                        Forms\Components\Placeholder::make('tinggi_berat_badan')
+                                            ->label('Tinggi / Berat Badan')
+                                            ->content(function (callable $get) {
+                                                $pendaftarId = $get('siswa_pendaftar_id');
+                                                if ($pendaftarId) {
+                                                    $pendaftar = SiswaPendaftar::find($pendaftarId);
+                                                    if ($pendaftar) {
+                                                        $tinggi = $pendaftar->tinggi_badan ?? '-';
+                                                        $berat = $pendaftar->berat_badan ?? '-';
+                                                        return $tinggi . ' cm / ' . $berat . ' kg';
+                                                    }
+                                                }
+                                                return '-';
+                                            })
+                                            ->extraAttributes(['class' => 'text-sm']),
+                                        
+                                        Forms\Components\Placeholder::make('jumlah_saudara')
+                                            ->label('Jumlah Saudara')
+                                            ->content(function (callable $get) {
+                                                $pendaftarId = $get('siswa_pendaftar_id');
+                                                if ($pendaftarId) {
+                                                    $pendaftar = SiswaPendaftar::find($pendaftarId);
+                                                    return $pendaftar->jumlah_saudara ?? '-';
                                                 }
                                                 return '-';
                                             })
@@ -344,13 +414,30 @@ class SiswaResource extends Resource
                                             })
                                             ->extraAttributes(['class' => 'text-sm']),
                                         
-                                        Forms\Components\Placeholder::make('nama_ibu')
-                                            ->label('Nama Ibu')
+                                        Forms\Components\Placeholder::make('nik_ayah')
+                                            ->label('NIK Ayah')
                                             ->content(function (callable $get) {
                                                 $pendaftarId = $get('siswa_pendaftar_id');
                                                 if ($pendaftarId) {
                                                     $pendaftar = SiswaPendaftar::find($pendaftarId);
-                                                    return $pendaftar->nama_ibu ?? '-';
+                                                    return $pendaftar->nik_ayah_decrypted ?? '-';
+                                                }
+                                                return '-';
+                                            })
+                                            ->extraAttributes(['class' => 'text-sm']),
+                                        
+                                        Forms\Components\Placeholder::make('ttl_ayah')
+                                            ->label('TTL Ayah')
+                                            ->content(function (callable $get) {
+                                                $pendaftarId = $get('siswa_pendaftar_id');
+                                                if ($pendaftarId) {
+                                                    $pendaftar = SiswaPendaftar::find($pendaftarId);
+                                                    if ($pendaftar) {
+                                                        $tempat = $pendaftar->tempat_lahir_ayah ?? '-';
+                                                        $tanggal = $pendaftar->tanggal_lahir_ayah ? 
+                                                            $pendaftar->tanggal_lahir_ayah->format('d/m/Y') : '-';
+                                                        return $tempat . ', ' . $tanggal;
+                                                    }
                                                 }
                                                 return '-';
                                             })
@@ -368,6 +455,59 @@ class SiswaResource extends Resource
                                             })
                                             ->extraAttributes(['class' => 'text-sm']),
                                         
+                                        Forms\Components\Placeholder::make('pendidikan_ayah')
+                                            ->label('Pendidikan Ayah')
+                                            ->content(function (callable $get) {
+                                                $pendaftarId = $get('siswa_pendaftar_id');
+                                                if ($pendaftarId) {
+                                                    $pendaftar = SiswaPendaftar::find($pendaftarId);
+                                                    return $pendaftar->pendidikan_ayah ?? '-';
+                                                }
+                                                return '-';
+                                            })
+                                            ->extraAttributes(['class' => 'text-sm']),
+                                        
+                                        Forms\Components\Placeholder::make('nama_ibu')
+                                            ->label('Nama Ibu')
+                                            ->content(function (callable $get) {
+                                                $pendaftarId = $get('siswa_pendaftar_id');
+                                                if ($pendaftarId) {
+                                                    $pendaftar = SiswaPendaftar::find($pendaftarId);
+                                                    return $pendaftar->nama_ibu ?? '-';
+                                                }
+                                                return '-';
+                                            })
+                                            ->extraAttributes(['class' => 'text-sm']),
+                                        
+                                        Forms\Components\Placeholder::make('nik_ibu')
+                                            ->label('NIK Ibu')
+                                            ->content(function (callable $get) {
+                                                $pendaftarId = $get('siswa_pendaftar_id');
+                                                if ($pendaftarId) {
+                                                    $pendaftar = SiswaPendaftar::find($pendaftarId);
+                                                    return $pendaftar->nik_ibu_decrypted ?? '-';
+                                                }
+                                                return '-';
+                                            })
+                                            ->extraAttributes(['class' => 'text-sm']),
+                                        
+                                        Forms\Components\Placeholder::make('ttl_ibu')
+                                            ->label('TTL Ibu')
+                                            ->content(function (callable $get) {
+                                                $pendaftarId = $get('siswa_pendaftar_id');
+                                                if ($pendaftarId) {
+                                                    $pendaftar = SiswaPendaftar::find($pendaftarId);
+                                                    if ($pendaftar) {
+                                                        $tempat = $pendaftar->tempat_lahir_ibu ?? '-';
+                                                        $tanggal = $pendaftar->tanggal_lahir_ibu ? 
+                                                            $pendaftar->tanggal_lahir_ibu->format('d/m/Y') : '-';
+                                                        return $tempat . ', ' . $tanggal;
+                                                    }
+                                                }
+                                                return '-';
+                                            })
+                                            ->extraAttributes(['class' => 'text-sm']),
+                                        
                                         Forms\Components\Placeholder::make('pekerjaan_ibu')
                                             ->label('Pekerjaan Ibu')
                                             ->content(function (callable $get) {
@@ -380,13 +520,13 @@ class SiswaResource extends Resource
                                             })
                                             ->extraAttributes(['class' => 'text-sm']),
                                         
-                                        Forms\Components\Placeholder::make('telepon_ortu')
-                                            ->label('Telepon Orang Tua')
+                                        Forms\Components\Placeholder::make('pendidikan_ibu')
+                                            ->label('Pendidikan Ibu')
                                             ->content(function (callable $get) {
                                                 $pendaftarId = $get('siswa_pendaftar_id');
                                                 if ($pendaftarId) {
                                                     $pendaftar = SiswaPendaftar::find($pendaftarId);
-                                                    return $pendaftar->no_telp_decrypted ?? '-';
+                                                    return $pendaftar->pendidikan_ibu ?? '-';
                                                 }
                                                 return '-';
                                             })
@@ -394,16 +534,31 @@ class SiswaResource extends Resource
                                     ])
                                     ->columnSpan(1),
                                 
-                                // Data Alamat & Lainnya
+                                // Data Alamat, Sekolah & Lainnya
                                 Forms\Components\Group::make()
                                     ->schema([
-                                        Forms\Components\Placeholder::make('alamat_title')
+                                        Forms\Components\Placeholder::make('alamat_lainnya_title')
                                             ->label('ALAMAT & LAINNYA')
                                             ->content('')
                                             ->extraAttributes(['class' => 'font-bold text-gray-800 text-sm uppercase']),
                                         
-                                        Forms\Components\Placeholder::make('alamat_lengkap')
-                                            ->label('Alamat Lengkap')
+                                        Forms\Components\Placeholder::make('alamat_ortu')
+                                            ->label('Alamat Orang Tua')
+                                            ->content(function (callable $get) {
+                                                $pendaftarId = $get('siswa_pendaftar_id');
+                                                if ($pendaftarId) {
+                                                    $pendaftar = SiswaPendaftar::find($pendaftarId);
+                                                    if ($pendaftar) {
+                                                        $alamat = $pendaftar->alamat_ayah ?? $pendaftar->alamat_ibu ?? '-';
+                                                        return $alamat;
+                                                    }
+                                                }
+                                                return '-';
+                                            })
+                                            ->extraAttributes(['class' => 'text-sm']),
+                                        
+                                        Forms\Components\Placeholder::make('alamat_siswa')
+                                            ->label('Alamat Siswa')
                                             ->content(function (callable $get) {
                                                 $pendaftarId = $get('siswa_pendaftar_id');
                                                 if ($pendaftarId) {
@@ -425,6 +580,18 @@ class SiswaResource extends Resource
                                             })
                                             ->extraAttributes(['class' => 'text-sm']),
                                         
+                                        Forms\Components\Placeholder::make('telepon_ortu')
+                                            ->label('Telepon Orang Tua')
+                                            ->content(function (callable $get) {
+                                                $pendaftarId = $get('siswa_pendaftar_id');
+                                                if ($pendaftarId) {
+                                                    $pendaftar = SiswaPendaftar::find($pendaftarId);
+                                                    return $pendaftar->no_telp_decrypted ?? '-';
+                                                }
+                                                return '-';
+                                            })
+                                            ->extraAttributes(['class' => 'text-sm']),
+                                        
                                         Forms\Components\Placeholder::make('asal_sekolah_info')
                                             ->label('Asal Sekolah')
                                             ->content(function (callable $get) {
@@ -437,28 +604,43 @@ class SiswaResource extends Resource
                                             })
                                             ->extraAttributes(['class' => 'text-sm']),
                                         
-                                        Forms\Components\Placeholder::make('agama')
-                                            ->label('Agama')
+                                        Forms\Components\Placeholder::make('jarak_waktu_sekolah')
+                                            ->label('Jarak & Waktu ke Sekolah')
                                             ->content(function (callable $get) {
                                                 $pendaftarId = $get('siswa_pendaftar_id');
                                                 if ($pendaftarId) {
                                                     $pendaftar = SiswaPendaftar::find($pendaftarId);
                                                     if ($pendaftar) {
-                                                        $agama = strtolower($pendaftar->agama ?? '');
-                                                        return ucfirst($agama);
+                                                        $jarak = $pendaftar->jarak_sekolah ?? '-';
+                                                        $waktu = $pendaftar->waktu_tempuh ?? '-';
+                                                        return $jarak . ' km / ' . $waktu . ' menit';
                                                     }
                                                 }
                                                 return '-';
                                             })
                                             ->extraAttributes(['class' => 'text-sm']),
                                         
-                                        Forms\Components\Placeholder::make('usia')
-                                            ->label('Usia')
+                                        Forms\Components\Placeholder::make('penghasilan_ortu')
+                                            ->label('Penghasilan Orang Tua')
                                             ->content(function (callable $get) {
                                                 $pendaftarId = $get('siswa_pendaftar_id');
                                                 if ($pendaftarId) {
                                                     $pendaftar = SiswaPendaftar::find($pendaftarId);
-                                                    return $pendaftar->usia ? $pendaftar->usia . ' tahun' : '-';
+                                                    return $pendaftar->formatted_penghasilan ?? '-';
+                                                }
+                                                return '-';
+                                            })
+                                            ->extraAttributes(['class' => 'text-sm']),
+                                        
+                                        Forms\Components\Placeholder::make('tahun_ajaran_info')
+                                            ->label('Tahun Ajaran (Pendaftaran)')
+                                            ->content(function (callable $get) {
+                                                $pendaftarId = $get('siswa_pendaftar_id');
+                                                if ($pendaftarId) {
+                                                    $pendaftar = SiswaPendaftar::find($pendaftarId);
+                                                    if ($pendaftar && $pendaftar->tahunAjaran) {
+                                                        return $pendaftar->tahunAjaran->nama_tahun_ajaran ?? '-';
+                                                    }
                                                 }
                                                 return '-';
                                             })
@@ -499,11 +681,93 @@ class SiswaResource extends Resource
                                     ])
                                     ->columnSpan(1),
                             ]),
+                        
+                        // Section untuk dokumen yang sudah diupload di pendaftaran
+                        Forms\Components\Grid::make(2)
+                            ->schema([
+                                Forms\Components\Placeholder::make('dokumen_title')
+                                    ->label('DOKUMEN YANG SUDAH DIUPLOAD')
+                                    ->content('')
+                                    ->extraAttributes(['class' => 'font-bold text-gray-800 text-sm uppercase col-span-2']),
+                                
+                                Forms\Components\Placeholder::make('akte_kelahiran_doc')
+                                    ->label('Akte Kelahiran')
+                                    ->content(function (callable $get) {
+                                        $pendaftarId = $get('siswa_pendaftar_id');
+                                        if ($pendaftarId) {
+                                            $pendaftar = SiswaPendaftar::find($pendaftarId);
+                                            if ($pendaftar && $pendaftar->akte_kelahiran_exists) {
+                                                return new HtmlString(
+                                                    '<a href="' . $pendaftar->akte_kelahiran_url . '" target="_blank" class="text-blue-600 hover:text-blue-800 underline">Lihat Dokumen</a>'
+                                                );
+                                            }
+                                            return '<span class="text-gray-500">Tidak ada dokumen</span>';
+                                        }
+                                        return '<span class="text-gray-500">-</span>';
+                                    })
+                                    ->extraAttributes(['class' => 'text-sm'])
+                                    ->columnSpan(1),
+                                
+                                Forms\Components\Placeholder::make('kartu_keluarga_doc')
+                                    ->label('Kartu Keluarga')
+                                    ->content(function (callable $get) {
+                                        $pendaftarId = $get('siswa_pendaftar_id');
+                                        if ($pendaftarId) {
+                                            $pendaftar = SiswaPendaftar::find($pendaftarId);
+                                            if ($pendaftar && $pendaftar->kartu_keluarga_exists) {
+                                                return new HtmlString(
+                                                    '<a href="' . $pendaftar->kartu_keluarga_url . '" target="_blank" class="text-blue-600 hover:text-blue-800 underline">Lihat Dokumen</a>'
+                                                );
+                                            }
+                                            return '<span class="text-gray-500">Tidak ada dokumen</span>';
+                                        }
+                                        return '<span class="text-gray-500">-</span>';
+                                    })
+                                    ->extraAttributes(['class' => 'text-sm'])
+                                    ->columnSpan(1),
+                                
+                                Forms\Components\Placeholder::make('kia_doc')
+                                    ->label('KIA (Kartu Identitas Anak)')
+                                    ->content(function (callable $get) {
+                                        $pendaftarId = $get('siswa_pendaftar_id');
+                                        if ($pendaftarId) {
+                                            $pendaftar = SiswaPendaftar::find($pendaftarId);
+                                            if ($pendaftar && $pendaftar->kia_exists) {
+                                                return new HtmlString(
+                                                    '<a href="' . $pendaftar->kia_url . '" target="_blank" class="text-blue-600 hover:text-blue-800 underline">Lihat Dokumen</a>'
+                                                );
+                                            }
+                                            return '<span class="text-gray-500">Tidak ada dokumen</span>';
+                                        }
+                                        return '<span class="text-gray-500">-</span>';
+                                    })
+                                    ->extraAttributes(['class' => 'text-sm'])
+                                    ->columnSpan(1),
+                                
+                                Forms\Components\Placeholder::make('bpjs_doc')
+                                    ->label('BPJS')
+                                    ->content(function (callable $get) {
+                                        $pendaftarId = $get('siswa_pendaftar_id');
+                                        if ($pendaftarId) {
+                                            $pendaftar = SiswaPendaftar::find($pendaftarId);
+                                            if ($pendaftar && $pendaftar->bpjs_exists) {
+                                                return new HtmlString(
+                                                    '<a href="' . $pendaftar->bpjs_url . '" target="_blank" class="text-blue-600 hover:text-blue-800 underline">Lihat Dokumen</a>'
+                                                );
+                                            }
+                                            return '<span class="text-gray-500">Tidak ada dokumen</span>';
+                                        }
+                                        return '<span class="text-gray-500">-</span>';
+                                    })
+                                    ->extraAttributes(['class' => 'text-sm'])
+                                    ->columnSpan(1),
+                            ])
+                            ->hidden(fn (callable $get) => empty($get('siswa_pendaftar_id'))),
                     ])
                     ->collapsible()
                     ->collapsed()
                     ->hidden(fn (callable $get) => empty($get('siswa_pendaftar_id')))
-                    ->description('Data lengkap dari formulir pendaftaran siswa')
+                    ->description('Data lengkap dari formulir pendaftaran siswa. Dokumen sudah tersedia di sistem.')
                     ->icon('heroicon-o-document-text'),
             ]);
     }

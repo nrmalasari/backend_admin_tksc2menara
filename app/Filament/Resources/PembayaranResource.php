@@ -12,7 +12,6 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
-use Illuminate\Contracts\View\View;
 
 class PembayaranResource extends Resource
 {
@@ -25,6 +24,7 @@ class PembayaranResource extends Resource
     protected static ?string $modelLabel = 'Pembayaran';
     
     protected static ?int $navigationSort = 1;
+    
     public static function getBreadcrumb(): string
     {
         return 'Pembayaran';
@@ -94,7 +94,6 @@ class PembayaranResource extends Resource
                             ->hidden(fn (Forms\Get $get): bool => $get('metode_pembayaran') !== 'transfer'),
                     ])->hidden(fn (Forms\Get $get): bool => $get('metode_pembayaran') !== 'transfer'),
                 
-                // **PERBAIKAN: Bagian Jumlah Pembayaran dipisah**
                 Forms\Components\Section::make('Jumlah Pembayaran')
                     ->schema([
                         Forms\Components\TextInput::make('jumlah_pembayaran')
@@ -113,7 +112,6 @@ class PembayaranResource extends Resource
                             }),
                     ]),
                 
-                // **PERBAIKAN: Bagian Bukti Pembayaran - Admin bisa upload untuk semua metode**
                 Forms\Components\Section::make('Bukti Pembayaran')
                     ->schema([
                         Forms\Components\FileUpload::make('bukti_pembayaran')
@@ -139,7 +137,6 @@ class PembayaranResource extends Resource
                             ->uploadProgressIndicatorPosition('right')
                             ->hintIcon('heroicon-o-information-circle'),
                         
-                        // Tampilkan info khusus untuk metode manual
                         Forms\Components\Placeholder::make('manual_info')
                             ->label('Catatan untuk Pembayaran Manual')
                             ->content('Untuk pembayaran manual, pastikan siswa telah membayar di kantor sebelum upload bukti pembayaran.')
@@ -160,9 +157,7 @@ class PembayaranResource extends Resource
                             ->required()
                             ->reactive()
                             ->afterStateUpdated(function (Forms\Set $set, Forms\Get $get, $state) {
-                                // Jika status diverifikasi dan metode manual, otomatis upload bukti default
                                 if ($state === 'diverifikasi' && $get('metode_pembayaran') === 'manual' && !$get('bukti_pembayaran')) {
-                                    // Set bukti default untuk pembayaran manual yang diverifikasi
                                     $set('bukti_pembayaran', 'default-payment.png');
                                 }
                             }),
@@ -204,10 +199,10 @@ class PembayaranResource extends Resource
                         $record->metode_pembayaran === 'manual' ? 'Pembayaran di Kantor' : $state
                     ),
                 
+                // PERBAIKAN: Hapus searchable() dari no_rek_decrypted karena ini field virtual
                 Tables\Columns\TextColumn::make('no_rek_decrypted')
                     ->label('No. Rekening')
-                    ->searchable()
-                    ->sortable()
+                    ->sortable() // Hanya sortable, TIDAK searchable
                     ->formatStateUsing(fn ($state, Pembayaran $record) => 
                         $record->metode_pembayaran === 'manual' ? '-' : ($state ?? 'Tidak ada')
                     ),
@@ -277,7 +272,6 @@ class PembayaranResource extends Resource
                         'manual' => 'Manual',
                     ]),
                 
-                // **PERBAIKAN: Typo diperbaiki di sini**
                 Tables\Filters\Filter::make('tanggal_pembayaran')
                     ->form([
                         Forms\Components\DatePicker::make('dari_tanggal'),
@@ -299,25 +293,59 @@ class PembayaranResource extends Resource
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make(),
                 
-                // Action untuk melihat bukti
                 Tables\Actions\Action::make('viewProof')
                     ->label('Lihat Bukti')
                     ->icon('heroicon-o-eye')
                     ->color('info')
                     ->modalHeading('Bukti Pembayaran')
-                    ->modalContent(function (Pembayaran $record): View {
-                        return view('filament.components.proof-modal', [
-                            'imageUrl' => $record->bukti_pembayaran_url ?? asset('images/default-payment.png'),
-                            'isImage' => in_array(pathinfo($record->bukti_pembayaran_url, PATHINFO_EXTENSION), ['jpg', 'jpeg', 'png', 'gif', 'webp']),
-                            'isManual' => $record->metode_pembayaran === 'manual',
-                        ]);
+                    ->modalDescription(function (Pembayaran $record) {
+                        if (empty($record->bukti_pembayaran)) {
+                            return '❌ **Bukti pembayaran belum diupload.**';
+                        }
+                        
+                        return '✅ **Bukti pembayaran tersedia.**';
                     })
-                    ->modalWidth('4xl')
+                    ->modalContent(function (Pembayaran $record) {
+                        if (empty($record->bukti_pembayaran)) {
+                            $html = <<<HTML
+                            <div class="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                <div class="flex items-center">
+                                    <svg class="w-5 h-5 mr-2 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.346 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                                    </svg>
+                                    <span class="text-yellow-800 font-medium">Belum ada bukti pembayaran</span>
+                                </div>
+                                <p class="mt-2 text-yellow-700">Silakan upload bukti pembayaran terlebih dahulu menggunakan tombol "Upload Bukti".</p>
+                            </div>
+                            HTML;
+                            
+                            return new \Illuminate\Support\HtmlString($html);
+                        }
+                        
+                        $html = <<<HTML
+                        <div class="p-4 bg-gray-50 rounded-lg">
+                            <div class="flex justify-center">
+                                <a href="{$record->bukti_pembayaran_url}" 
+                                   target="_blank" 
+                                   class="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200">
+                                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                    Lihat Bukti Pembayaran
+                                </a>
+                            </div>
+                            <p class="mt-3 text-sm text-gray-600 text-center">File akan dibuka di tab baru.</p>
+                        </div>
+                        HTML;
+                        
+                        return new \Illuminate\Support\HtmlString($html);
+                    })
+                    ->modalWidth('lg')
                     ->modalSubmitAction(false)
                     ->modalCancelActionLabel('Tutup')
-                    ->visible(fn (Pembayaran $record) => !empty($record->bukti_pembayaran) || $record->metode_pembayaran === 'manual'),
+                    ->visible(fn (Pembayaran $record) => true),
                 
-                // Action untuk upload bukti manual
                 Tables\Actions\Action::make('uploadProof')
                     ->label('Upload Bukti')
                     ->icon('heroicon-o-cloud-arrow-up')
@@ -337,7 +365,6 @@ class PembayaranResource extends Resource
                     ->action(function (Pembayaran $record, array $data) {
                         $record->bukti_pembayaran = $data['bukti_pembayaran'];
                         
-                        // Jika belum diverifikasi, otomatis update status
                         if ($record->status_pembayaran === 'menunggu') {
                             $record->status_pembayaran = 'diverifikasi';
                             $record->catatan_admin = 'Pembayaran manual telah diverifikasi oleh admin';
@@ -356,7 +383,6 @@ class PembayaranResource extends Resource
                     ->action(function (Pembayaran $record) {
                         $record->status_pembayaran = 'diverifikasi';
                         
-                        // Untuk pembayaran manual, set bukti default jika belum ada
                         if ($record->metode_pembayaran === 'manual' && empty($record->bukti_pembayaran)) {
                             $record->bukti_pembayaran = 'default-payment.png';
                             $record->catatan_admin = 'Pembayaran manual telah diverifikasi. Bukti pembayaran diterima di kantor.';
@@ -405,7 +431,6 @@ class PembayaranResource extends Resource
                             foreach ($records as $record) {
                                 $record->status_pembayaran = 'diverifikasi';
                                 
-                                // Untuk pembayaran manual, set bukti default jika belum ada
                                 if ($record->metode_pembayaran === 'manual' && empty($record->bukti_pembayaran)) {
                                     $record->bukti_pembayaran = 'default-payment.png';
                                 }
@@ -415,7 +440,13 @@ class PembayaranResource extends Resource
                         })
                         ->requiresConfirmation(),
                 ]),
-            ]);
+            ])
+            // PERBAIKAN: Tambahkan ini untuk handle global search
+            ->modifyQueryUsing(function (Builder $query) {
+                // Filament secara otomatis menambahkan search pada kolom yang memiliki ->searchable()
+                // Untuk no_rek_decrypted, kita tidak bisa search karena field virtual
+                // Jadi biarkan Filament handle yang lain secara default
+            });
     }
 
     public static function getRelations(): array
@@ -432,7 +463,7 @@ class PembayaranResource extends Resource
         ];
     }
 
-     public static function getNavigationBadge(): ?string
+    public static function getNavigationBadge(): ?string
     {
         return static::getModel()::whereIn('status_pembayaran', ['menunggu', 'diproses'])->count();
     }

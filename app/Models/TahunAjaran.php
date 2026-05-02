@@ -33,8 +33,31 @@ class TahunAjaran extends Model
     {
         return $this->hasMany(Pembayaran::class);
     }
-    public function tahunAjaran()
+
+    // Hapus method tahunAjaran() yang duplikat karena sudah ada relasi di atas
+    // public function tahunAjaran() // HAPUS BARIS INI
+    // {
+    //     return $this->belongsTo(TahunAjaran::class);
+    // }
+    
+    // Tambahkan method untuk mendapatkan tahun awal dan akhir
+    public function getTahunAwalAttribute()
     {
-        return $this->belongsTo(TahunAjaran::class);
+        if (preg_match('/(\d{4})[\/\-](\d{4})/', $this->nama_tahun_ajaran, $matches)) {
+            return $matches[1];
+        } elseif (preg_match('/(\d{4})/', $this->nama_tahun_ajaran, $matches)) {
+            return $matches[1];
+        }
+        return date('Y');
+    }
+    
+    public function getTahunAkhirAttribute()
+    {
+        if (preg_match('/(\d{4})[\/\-](\d{4})/', $this->nama_tahun_ajaran, $matches)) {
+            return $matches[2];
+        } elseif (preg_match('/(\d{4})/', $this->nama_tahun_ajaran, $matches)) {
+            return (int)$matches[1] + 1;
+        }
+        return date('Y') + 1;
     }
 }

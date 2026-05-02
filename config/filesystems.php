@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'default' => env('FILESYSTEM_DISK', 'local'),
+    'default' => env('FILESYSTEM_DISK', 'public'),
 
     /*
     |--------------------------------------------------------------------------
@@ -43,6 +43,15 @@ return [
             'root' => storage_path('app/public'),
             'url' => env('APP_URL').'/storage',
             'visibility' => 'public',
+            'throw' => false,
+            'report' => false,
+        ],
+
+        // DISK RAHASIA untuk file-file sensitif
+        'rahasia' => [
+            'driver' => 'local',
+            'root' => storage_path('app/secure-files'), // Lokasi aman
+            'visibility' => 'private',
             'throw' => false,
             'report' => false,
         ],

@@ -53,7 +53,7 @@ class RincianPembayaranResource extends Resource
                                 'lainnya' => 'Lainnya',
                             ])
                             ->required()
-                            ->native(false),
+                            ->native(true),
                         
                         Forms\Components\Textarea::make('deskripsi')
                             ->label('Deskripsi')

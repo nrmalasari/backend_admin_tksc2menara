@@ -12,7 +12,81 @@ use App\Http\Controllers\API\FasilitasController;
 use App\Http\Controllers\API\StrukturOrganisasiController;
 use App\Http\Controllers\API\SambutanKepalaSekolahController;
 use App\Http\Controllers\API\StatsController;
+use App\Http\Controllers\API\TahunAjaranController; // Tambahkan ini
 use Illuminate\Http\Request;
+// ==================== API ROUTES ====================
+// ==================== ROUTE PROXY UNTUK FILE RAHASIA ====================
+// Route ini menangkap permintaan gambar: domain.com/lihat-file/nama-file.jpg
+Route::get('/lihat-file/{filename}', function ($filename) {
+    
+    // 1. CEK: Apakah user login?
+    if (!Auth::check()) {
+        abort(403, 'Anda harus login untuk melihat file ini.');
+    }
+
+    // 2. CEK: Apakah file ada di disk 'rahasia'?
+    if (!Storage::disk('rahasia')->exists($filename)) {
+        abort(404, 'File tidak ditemukan.');
+    }
+
+    // 3. TAMPILKAN FILE
+    $path = storage_path('app/secure-files/' . $filename);
+    
+    // Cek mime type untuk response yang tepat
+    $mimeType = mime_content_type($path);
+    
+    return response()->file($path, [
+        'Content-Type' => $mimeType,
+    ]);
+
+})->name('ambil.file.rahasia'); // HAPUS middleware, kita handle manual
+
+// ==================== FILE ACCESS ROUTES (LEGACY) ====================
+Route::prefix('api')->group(function () {
+    // Route untuk mengakses file dengan auth check
+    Route::get('/secure-files/{filename}', function ($filename) {
+        try {
+            // Untuk API, cek token atau authorization header
+            $authHeader = request()->header('Authorization');
+            if (!$authHeader || !str_starts_with($authHeader, 'Bearer ')) {
+                return response()->json([
+                    'error' => 'Unauthorized',
+                    'message' => 'Token tidak valid'
+                ], 401);
+            }
+            
+            $path = storage_path('app/secure-files/' . $filename);
+            
+            // Cek jika file ada di disk 'rahasia'
+            if (!Storage::disk('rahasia')->exists($filename)) {
+                // Fallback ke public untuk backward compatibility
+                $path = storage_path('app/public/secure-files/' . $filename);
+                
+                if (!file_exists($path)) {
+                    return response()->json([
+                        'error' => 'File not found',
+                        'filename' => $filename
+                    ], 404);
+                }
+            }
+            
+            // Tentukan content type
+            $mimeType = mime_content_type($path);
+            
+            return response()->file($path, [
+                'Content-Type' => $mimeType,
+                'Content-Disposition' => 'inline'
+            ]);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Error accessing file',
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    });
+});
+
 
 // ==================== API ROUTES ====================
 Route::prefix('api')->group(function () {
@@ -93,7 +167,15 @@ Route::prefix('api')->group(function () {
                 'GET /api/stats/home' => 'Get home stats',
                 'GET /api/stats/category/{category}' => 'Get stats by category',
                 'GET /api/guru/stats' => 'Get guru stats',
-                'GET /api/siswa/stats' => 'Get siswa stats'
+                'GET /api/siswa/stats' => 'Get siswa stats',
+                'GET /api/tahun-ajaran' => 'Get semua tahun ajaran',
+                'GET /api/tahun-ajaran/latest' => 'Get tahun ajaran terbaru',
+                'GET /api/tahun-ajaran/active' => 'Get tahun ajaran aktif',
+                'GET /api/tahun-ajaran/{id}' => 'Get detail tahun ajaran',
+                'GET /api/tahun-ajaran/stats' => 'Get stats tahun ajaran',
+                'GET /api/tahun-ajaran/test/all' => 'Test get all tahun ajaran',
+                'GET /lihat-file/{filename}' => 'View secure file (WEB ONLY)',
+                'GET /api/secure-files/{filename}' => 'View secure file (API)',
             ]
         ]);
     });
@@ -325,7 +407,19 @@ Route::prefix('api')->group(function () {
         Route::get('/category/{category}', [StatsController::class, 'getStatsByCategory'])->name('stats.category');
     });
     
-    // 14. Test POST endpoint
+    // 14. Tahun Ajaran Routes (publik - tanpa auth)
+    Route::prefix('tahun-ajaran')->group(function () {
+        Route::get('/', [TahunAjaranController::class, 'index'])->name('tahun-ajaran.index');
+        Route::get('/latest', [TahunAjaranController::class, 'getLatest'])->name('tahun-ajaran.latest');
+        Route::get('/active', [TahunAjaranController::class, 'getActive'])->name('tahun-ajaran.active');
+        Route::get('/{id}', [TahunAjaranController::class, 'show'])->name('tahun-ajaran.show');
+        Route::get('/stats', [TahunAjaranController::class, 'getStats'])->name('tahun-ajaran.stats');
+        
+        // Test route untuk debugging
+        Route::get('/test/all', [TahunAjaranController::class, 'testAll'])->name('tahun-ajaran.test.all');
+    });
+    
+    // 15. Test POST endpoint
     Route::post('/test-post', function (Request $request) {
         return response()->json([
             'success' => true,
@@ -348,6 +442,7 @@ Route::fallback(function () {
         'error' => 'Route not found',
         'available_routes' => [
             'GET /' => 'Home page',
+            'GET /lihat-file/{filename}' => 'View secure file (requires login)',
             'GET /api/test' => 'Test API',
             'GET /api/test-aes' => 'Test AES encryption',
             'POST /api/pendaftar/register' => 'Register user',
@@ -415,6 +510,12 @@ Route::fallback(function () {
             'GET /api/stats' => 'Get all stats',
             'GET /api/stats/home' => 'Get home stats',
             'GET /api/stats/category/{category}' => 'Get stats by category',
+            'GET /api/tahun-ajaran' => 'Get semua tahun ajaran',
+            'GET /api/tahun-ajaran/latest' => 'Get tahun ajaran terbaru',
+            'GET /api/tahun-ajaran/active' => 'Get tahun ajaran aktif',
+            'GET /api/tahun-ajaran/{id}' => 'Get detail tahun ajaran',
+            'GET /api/tahun-ajaran/stats' => 'Get stats tahun ajaran',
+            'GET /api/tahun-ajaran/test/all' => 'Test get all tahun ajaran',
             'POST /api/test-post' => 'Test POST request',
             'GET /api/siswa-pendaftar/test' => 'Test get all siswa',
             'POST /api/siswa-pendaftar/test' => 'Test create siswa'
